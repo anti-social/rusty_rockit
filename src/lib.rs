@@ -228,7 +228,7 @@ impl<'a> RockitChannel<'a> {
             rk_check_err!(
                 ffi::RK_MPI_VI_SetChnAttr(pipe.id, channel_id, &mut channel as *mut _)
             );
-            rk_check_err!(ffi::RK_MPI_VI_EnableChn(0, channel_id));
+            rk_check_err!(ffi::RK_MPI_VI_EnableChn(pipe.id, channel_id));
             channel
         };
         
