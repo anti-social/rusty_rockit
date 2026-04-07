@@ -197,8 +197,8 @@ impl<'a> RockitChannel<'a> {
                 bFlip: 0,
                 u32Depth: 2,
                 stFrameRate: ffi::FRAME_RATE_CTRL_S {
-                    s32SrcFrameRate: 0,
-                    s32DstFrameRate: 0,
+                    s32SrcFrameRate: 30,
+                    s32DstFrameRate: 30,
                 },
                 enAllocBufType: ffi::rkVI_ALLOC_BUF_TYPE_E_VI_ALLOC_BUF_TYPE_INTERNAL,
                 stIspOpt: ffi::VI_ISP_OPT_S {
