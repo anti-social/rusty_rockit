@@ -6,8 +6,21 @@ use std::sync::{Arc, Mutex};
 use rockit_sys as ffi;
 use snafu::Snafu;
 
-// static MPI_SYS_INIT: OnceLock<Result<(), Error>> = OnceLock::new();
+pub mod aiq;
+
+const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
+const RK_ERR_APPID: u32 = 0x80000000 + 0x20000000;
+const RK_ERR_VI_NOT_CONFIG: i32 = rk_def_err(
+    ffi::rkMOD_ID_E_RK_ID_VI as i32,
+    ffi::rkERR_LEVEL_E_RK_ERR_LEVEL_ERROR as i32,
+    ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_CONFIG as i32,
+);
+
 static MPI_SYS_INIT: Mutex<OnceCell<()>> = Mutex::new(OnceCell::new());
+
+const fn rk_def_err(module: i32, level: i32, errid: i32) -> i32 {
+    RK_ERR_APPID as i32 | ((module) << 16 ) | ((level) << 13) | (errid)
+}
 
 #[derive(Clone, Debug, Snafu)]
 pub enum Error {
@@ -300,19 +313,6 @@ impl<'a> ViFrame<'a> {
         Ok(data)
     }
 }
-
-const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
-const RK_ERR_APPID: u32 = 0x80000000 + 0x20000000;
-const RK_ERR_VI_NOT_CONFIG: i32 = rk_def_err(
-    ffi::rkMOD_ID_E_RK_ID_VI as i32,
-    ffi::rkERR_LEVEL_E_RK_ERR_LEVEL_ERROR as i32,
-    ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_CONFIG as i32,
-);
-
-const fn rk_def_err(module: i32, level: i32, errid: i32) -> i32 {
-    RK_ERR_APPID as i32 | ((module) << 16 ) | ((level) << 13) | (errid)
-}
-
 
 // #define RK_ERR_VI_INVALID_PARA        RK_DEF_ERR(RK_ID_VI, RK_ERR_LEVEL_ERROR, RK_ERR_ILLEGAL_PARAM)
 // #define RK_ERR_VI_INVALID_DEVID       RK_DEF_ERR(RK_ID_VI, RK_ERR_LEVEL_ERROR, RK_ERR_INVALID_DEVID)
