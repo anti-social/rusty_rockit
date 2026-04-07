@@ -1,0 +1,2 @@
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-rockchip830-linux-uclibcgnueabihf-gcc"
