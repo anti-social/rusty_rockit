@@ -6,8 +6,8 @@ use rusty_rockit::aiq::AiqContext;
 fn main() {
     println!("Hello rockit!");
 
-    let mut aiq_ctx = AiqContext::init(0);
-    aiq_ctx.start();
+    let aiq_ctx = AiqContext::init(0);
+    let aiq_ctx = aiq_ctx.start();
 
     std::thread::sleep(std::time::Duration::from_millis(100));
 

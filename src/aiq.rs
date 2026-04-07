@@ -1,13 +1,20 @@
+use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
 use rockit_sys::aiq as ffi;
 
-pub struct AiqContext {
-    ctx: *mut ffi::rk_aiq_sys_ctx_s,
+pub mod state {
+    pub struct Initialized;
+    pub struct Started;
 }
 
-impl AiqContext {
-    pub fn init(cam_id: u8) -> Self {
+pub struct AiqContext<S> {
+    inner: AiqContextInner,
+    _marker: PhantomData<S>,
+}
+
+impl AiqContext<state::Initialized> {
+    pub fn init(cam_id: u8) -> AiqContext<state::Initialized> {
         let ctx = unsafe {
             let mut aiq_static_info = MaybeUninit::zeroed();
             ffi::rk_aiq_uapi2_sysctl_enumStaticMetas(
@@ -24,13 +31,13 @@ impl AiqContext {
             )
         };
 
-        Self { ctx }
+        Self { inner: AiqContextInner { ctx }, _marker: PhantomData }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(self) -> AiqContext<state::Started> {
         unsafe {
             let ret_code = ffi::rk_aiq_uapi2_sysctl_prepare(
-                self.ctx,
+                self.inner.ctx,
                 0,
                 0,
                 ffi::rk_aiq_working_mode_t_RK_AIQ_WORKING_MODE_NORMAL,
@@ -39,22 +46,32 @@ impl AiqContext {
                 
             }
 
-            let ret_code = ffi::rk_aiq_uapi2_sysctl_start(self.ctx);
+            let ret_code = ffi::rk_aiq_uapi2_sysctl_start(self.inner.ctx);
             if ret_code != 0 {
                 
             }
         }
-    }
 
-    pub fn stop(&mut self) {
-        unsafe {
-            ffi::rk_aiq_uapi2_sysctl_stop(self.ctx, false);
-        }
+        AiqContext { inner: self.inner, _marker: PhantomData }
     }
 }
 
-impl Drop for AiqContext {
+impl AiqContext<state::Started> {
+    pub fn stop(self) -> AiqContext<state::Initialized> {
+        unsafe {
+            ffi::rk_aiq_uapi2_sysctl_stop(self.inner.ctx, false);
+        }
+        AiqContext { inner: self.inner, _marker: PhantomData }
+    }
+}
+
+struct AiqContextInner {
+    ctx: *mut ffi::rk_aiq_sys_ctx_s,
+}
+
+impl Drop for AiqContextInner {
     fn drop(&mut self) {
+        println!("Dropping AIQ context...");
         unsafe {
             ffi::rk_aiq_uapi2_sysctl_deinit(self.ctx);
         }
