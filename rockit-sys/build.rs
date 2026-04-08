@@ -14,13 +14,6 @@ fn main() {
         .header("wrapper.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .clang_arg("-Ivendor/rockit/include")
-        .clang_arg("-Ivendor/isp/include/rkaiq")
-        .clang_arg("-Ivendor/isp/include/rkaiq/algos")
-        .clang_arg("-Ivendor/isp/include/rkaiq/common")
-        .clang_arg("-Ivendor/isp/include/rkaiq/iq_parser")
-        .clang_arg("-Ivendor/isp/include/rkaiq/iq_parser_v2")
-        .clang_arg("-Ivendor/isp/include/rkaiq/uAPI2")
-        .clang_arg("-Ivendor/isp/include/rkaiq/xcore")
         .generate()
         .expect("Unable to generate bindings");
 
