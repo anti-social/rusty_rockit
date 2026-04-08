@@ -3,6 +3,11 @@ name = "rockit-sys"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["mpi", "aiq"]
+mpi = []
+aiq = []
+
 [dependencies]
 
 [build-dependencies]

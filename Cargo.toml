@@ -9,6 +9,11 @@ name = "rusty-rockit"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["mpi", "aiq"]
+mpi = ["rockit-sys/mpi"]
+aiq = ["rockit-sys/aiq"]
+
 [dependencies]
 rockit-sys = { path = "rockit-sys" }
 snafu = "0.9.0"

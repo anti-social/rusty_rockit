@@ -3,9 +3,10 @@ use std::any::Any;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
-use rockit_sys as ffi;
+use rockit_sys::mpi as ffi;
 
-use crate::{Error, RockitSys, ViChannel, rk_check_err, rk_log_err};
+use crate::{Error, RockitSys, rk_check_err, rk_log_err};
+use crate::vi::ViChannel;
 
 pub mod state {
     pub struct Initialized;
@@ -138,8 +139,8 @@ impl<'a> VencChannel<'a, state::Started> {
         unsafe {
             let src_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VI,
-                s32DevId: vi_channel.pipe.id,
-                s32ChnId: vi_channel.id,
+                s32DevId: vi_channel.pipe_id(),
+                s32ChnId: vi_channel.id(),
             };
             let dst_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VENC,
@@ -181,14 +182,14 @@ impl<'a> Drop for VencChannelBind<'a> {
     fn drop(&mut self) {
         println!(
             "Dropping bound encoder channel: vi channel = {}, venc channel = {}",
-            self.vi_channel.id,
+            self.vi_channel.id(),
             self.venc_channel.id(),
         );
         unsafe {
             let src_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VI,
                 s32DevId: 0,
-                s32ChnId: self.vi_channel.id,
+                s32ChnId: self.vi_channel.id(),
             };
             let dst_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VENC,
