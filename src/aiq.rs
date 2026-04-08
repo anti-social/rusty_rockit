@@ -79,9 +79,13 @@ impl Drop for AiqContextInner {
 }
 
 extern "C" fn isp_err_callback(msg: *mut ffi::rk_aiq_err_msg_t) -> i32 {
+    let err_code = unsafe { (*msg).err_code };
+    if err_code == ffi::XCamReturn_XCAM_RETURN_BYPASS {
+        eprintln!("What should we do on xcam return bypass?");
+    }
     return ffi::XCamReturn_XCAM_RETURN_NO_ERROR;
 }
 
-extern "C" fn isp_sof_callback(meta: *mut ffi::rk_aiq_metas_t) -> i32 {
+extern "C" fn isp_sof_callback(_meta: *mut ffi::rk_aiq_metas_t) -> i32 {
     return ffi::XCamReturn_XCAM_RETURN_NO_ERROR;
 }

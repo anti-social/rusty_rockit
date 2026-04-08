@@ -7,6 +7,8 @@ use rockit_sys as ffi;
 use snafu::Snafu;
 
 pub mod aiq;
+pub mod venc;
+use venc::VencChannel;
 
 const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
 const RK_ERR_APPID: u32 = 0x80000000 + 0x20000000;
@@ -40,19 +42,21 @@ pub enum Error {
     Rockit { code: i32 }
 }
 
+#[macro_export]
 macro_rules! rk_check_err {
     ($fn:expr) => {
         let ret_code = $fn;
-        if ret_code != RK_SUCCESS {
-            return Err(Error::Rockit { code: ret_code });
+        if ret_code != crate::RK_SUCCESS {
+            return Err(crate::Error::Rockit { code: ret_code });
         }
     };
 }
 
+#[macro_export]
 macro_rules! rk_log_err {
     ($fn:expr, $msg:literal) => {
         let ret_code = $fn;
-        if ret_code != RK_SUCCESS {
+        if ret_code != crate::RK_SUCCESS {
             eprintln!("{}: {}", $msg, ret_code);
         }
     };
@@ -76,8 +80,16 @@ impl RockitSys {
         Ok(Self { _inner: Arc::new(RockitSysInner) })
     }
 
-    pub fn dev<'a>(&'a self, dev_id: u8, num_pipes: u8) -> Result<RockitDev<'a>, Error> {
+    pub fn camera<'a>(
+        &'a self, dev_id: u8, num_pipes: u8
+    ) -> Result<RockitDev<'a>, Error> {
         RockitDev::new(self, dev_id, num_pipes)
+    }
+
+    pub fn encoder<'a>(
+        &'a self, channel_id: u8, width: u16, height: u16
+    ) -> Result<VencChannel<'a, venc::state::Initialized>, Error> {
+        VencChannel::new(self, channel_id, width, height)
     }
 }
 
@@ -98,8 +110,8 @@ impl Drop for RockitSysInner {
 
 pub struct RockitDev<'a> {
     _mpi: &'a RockitSys,
+    _dev: ffi::rkVI_DEV_ATTR_S,
     id: i32,
-    dev: ffi::rkVI_DEV_ATTR_S,
     pipe: ffi::rkVI_DEV_BIND_PIPE_S,
 }
 
@@ -150,7 +162,7 @@ impl<'a> RockitDev<'a> {
             (dev.assume_init(), pipe)
         };
 
-        Ok(Self { _mpi: mpi, id: dev_id, dev, pipe })
+        Ok(Self { _mpi: mpi, id: dev_id, _dev: dev, pipe })
     }
 
     pub fn get_pipe(&self, pipe_id: u8) -> Result<ViPipe<'_>, Error> {
@@ -173,18 +185,17 @@ impl<'a> ViPipe<'a> {
 
     pub fn create_channel(
         &self, channel_id: u8, width: u16, height: u16
-    ) -> Result<RockitChannel<'_>, Error> {
-        RockitChannel::new(self, channel_id, width, height)
+    ) -> Result<ViChannel<'_>, Error> {
+        ViChannel::new(self, channel_id, width, height)
     } 
 }
 
-pub struct RockitChannel<'a> {
+pub struct ViChannel<'a> {
     pipe: &'a ViPipe<'a>,
     id: i32,
-    channel: ffi::VI_CHN_ATTR_S,
 }
 
-impl<'a> RockitChannel<'a> {
+impl<'a> ViChannel<'a> {
     fn new(
         pipe: &'a ViPipe<'a>,
         channel_id: u8,
@@ -196,7 +207,7 @@ impl<'a> RockitChannel<'a> {
         }
         let channel_id = channel_id as i32;
 
-        let channel = unsafe {
+        unsafe {
             let mut channel = ffi::VI_CHN_ATTR_S {
                 stSize: ffi::SIZE_S {
                     u32Width: width as _,
@@ -208,7 +219,7 @@ impl<'a> RockitChannel<'a> {
                 enCompressMode: ffi::rkCOMPRESS_MODE_E_COMPRESS_MODE_NONE,
                 bMirror: 0,
                 bFlip: 0,
-                u32Depth: 2,
+                u32Depth: 0,
                 stFrameRate: ffi::FRAME_RATE_CTRL_S {
                     s32SrcFrameRate: 30,
                     s32DstFrameRate: 30,
@@ -245,7 +256,7 @@ impl<'a> RockitChannel<'a> {
             channel
         };
         
-        Ok(Self { pipe, id: channel_id, channel })
+        Ok(Self { pipe, id: channel_id })
     }
 
     pub fn get_frame(&self) -> Result<ViFrame<'_>, Error> {
@@ -261,7 +272,7 @@ impl<'a> RockitChannel<'a> {
     }
 }
 
-impl<'a> Drop for RockitChannel<'a> {
+impl<'a> Drop for ViChannel<'a> {
     fn drop(&mut self) {
         unsafe {
             rk_log_err!(
@@ -273,7 +284,7 @@ impl<'a> Drop for RockitChannel<'a> {
 }
 
 pub struct ViFrame<'a> {
-    channel: &'a RockitChannel<'a>,
+    channel: &'a ViChannel<'a>,
     frame: ffi::rkVIDEO_FRAME_INFO_S,
 }
 
