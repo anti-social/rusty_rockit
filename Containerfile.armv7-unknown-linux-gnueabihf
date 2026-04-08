@@ -6,4 +6,3 @@ RUN echo Debian arch: $CROSS_DEB_ARCH
 COPY toolchain/arm-rockchip830-linux-uclibcgnueabihf /usr/local/bin/arm-rockchip830-linux-uclibcgnueabihf
 ENV PATH=$PATH:/usr/local/bin/arm-rockchip830-linux-uclibcgnueabihf/bin
 ENV CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-rockchip830-linux-uclibcgnueabihf-gcc
-ENV RUSTFLAGS="-C link-arg=rockit-sys/getauxval_stub.o"
