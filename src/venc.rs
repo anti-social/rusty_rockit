@@ -99,7 +99,6 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     },
                 },
             };
-            println!("Creating encoder channel: {channel_id}");
             rk_check_err!(
                 ffi::RK_MPI_VENC_CreateChn(channel_id, &channel_attr as *const _)
             );
@@ -120,7 +119,6 @@ impl<'a> VencChannel<'a, state::Initialized> {
             let recv_param = ffi::rkVENC_RECV_PIC_PARAM_S {
                 s32RecvPicNum: -1,
             };
-            println!("Starting encoder: {}", self.id());
             rk_check_err!(
                 ffi::RK_MPI_VENC_StartRecvFrame(self.id(), &recv_param as *const _)
             );
@@ -140,17 +138,14 @@ impl<'a> VencChannel<'a, state::Started> {
         unsafe {
             let src_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VI,
-                s32DevId: 0,
-                // s32DevId: vi_channel.pipe.id,
+                s32DevId: vi_channel.pipe.id,
                 s32ChnId: vi_channel.id,
             };
             let dst_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VENC,
                 s32DevId: 0,
-                // s32DevId: vi_channel.pipe.id,
                 s32ChnId: self.id(),
             };
-            println!("Binding encoder: {} -> {}", vi_channel.id, self.id());
             rk_check_err!(
                 ffi::RK_MPI_SYS_Bind(&src_channel as *const _, &dst_channel as *const _)
             );
@@ -221,14 +216,12 @@ impl<'a> VencChannelBind<'a> {
     }
 
     pub fn get_stream<'b>(&'a self, frame: &'b mut StreamFrame) -> Result<VencStream<'a, 'b>, Error> {
-        println!("Getting encoder stream: {}", self.venc_channel.id());
         unsafe {
             rk_check_err!(
                 ffi::RK_MPI_VENC_GetStream(
                     self.venc_channel.id(), &mut frame.frame as *mut _, 200
                 )
             );
-            println!("Got it!!!");
         }
 
         Ok(VencStream { channel: self, frame })
