@@ -27,12 +27,12 @@ fn main() {
         let enc = enc_channel.bind(&channel).expect("Bind encoder");
         let mut frame = enc.alloc_frame();
 
-        let mut file = File::create("test_frame.h264").expect("Create file");
+        let mut file = File::create("test-stream.h264").expect("Create file");
 
         for i in 0..30 {
             let stream = enc.get_stream(&mut frame).expect("Encoder stream");
             let packet_data = stream.data().expect("Packet data");
-            println!("{i}: Packet len: {}", packet_data.len());
+            println!("{}: Packet len: {}", i + 1, packet_data.len());
 
             file.write_all(packet_data).expect("Write file");
 

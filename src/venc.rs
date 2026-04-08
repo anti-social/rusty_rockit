@@ -241,10 +241,10 @@ pub struct VencStream<'a, 'b> {
 
 impl<'a, 'b> Drop for VencStream<'a, 'b> {
     fn drop(&mut self) {
-        println!(
-            "Releasing encoder stream: channel = {}",
-            self.channel.venc_channel.id(),
-        );
+        // println!(
+        //     "Releasing encoder stream: channel = {}",
+        //     self.channel.venc_channel.id(),
+        // );
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VENC_ReleaseStream(
@@ -258,14 +258,12 @@ impl<'a, 'b> Drop for VencStream<'a, 'b> {
 
 impl<'a, 'b> VencStream<'a, 'b> {
     pub fn data(&self) -> Result<&'b [u8], Error> {
-        println!("Getting data from stream: {}", self.channel.venc_channel.id());
         let data = unsafe {
             let packet = *self.frame.frame.pstPack;
             let data_ptr = ffi::RK_MPI_MB_Handle2VirAddr(packet.pMbBlk);
             if data_ptr.is_null() {
                 return Err(Error::InvalidFramePointer);
             }
-            println!("!!! {:x?} of len {}", data_ptr, packet.u32Len);
             slice::from_raw_parts(
                 data_ptr as *const u8,
                 packet.u32Len as usize
