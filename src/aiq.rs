@@ -1,4 +1,4 @@
-use std::any::{Any, TypeId};
+use std::any::Any;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
@@ -35,7 +35,7 @@ impl AiqContext<state::Initialized> {
         Self {
             inner: AiqContextInner {
                 ctx,
-                state: Box::new(state::Initialized) as Box<dyn Any>,
+                state: Box::new(state::Initialized),
             },
             _marker: PhantomData,
         }
@@ -60,7 +60,7 @@ impl AiqContext<state::Initialized> {
         }
 
         let mut inner = self.inner;
-        inner.state = Box::new(state::Started) as Box<dyn Any>;
+        inner.state = Box::new(state::Started);
         AiqContext { inner: inner, _marker: PhantomData }
     }
 }
@@ -70,7 +70,7 @@ impl AiqContext<state::Started> {
         self.inner.stop();
 
         let mut inner = self.inner;
-        inner.state = Box::new(state::Initialized) as Box<dyn Any>;
+        inner.state = Box::new(state::Initialized);
         AiqContext {
             inner, _marker: PhantomData
         }
@@ -85,7 +85,7 @@ struct AiqContextInner {
 impl Drop for AiqContextInner {
     fn drop(&mut self) {
         println!("Dropping AIQ context...");
-        if self.state.type_id() == TypeId::of::<state::Started>() {
+        if self.state.is::<state::Started>() {
             self.stop();
         }
         unsafe {

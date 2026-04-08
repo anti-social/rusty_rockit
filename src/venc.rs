@@ -1,4 +1,5 @@
 use core::slice;
+use std::any::Any; 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
@@ -7,24 +8,19 @@ use rockit_sys as ffi;
 use crate::{Error, RockitSys, ViChannel, rk_check_err, rk_log_err};
 
 pub mod state {
-    #[derive(Debug)]
-    pub(super) enum State {
-        Initialized,
-        Started,
-    }
     pub struct Initialized;
     pub struct Started;
 }
 
 struct VencChannelInner {
     id: i32,
-    state: state::State,
+    state: Box<dyn Any>,
 }
 
 impl Drop for VencChannelInner {
     fn drop(&mut self) {
         println!("Dropping encoder channel in state {:?}: {}", self.state, self.id);
-        if let state::State::Started = self.state {
+        if self.state.is::<state::Started>() {
             unsafe {
                 rk_log_err!(
                     ffi::RK_MPI_VENC_StopRecvFrame(self.id),
@@ -112,7 +108,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
         Ok(Self {
             inner: VencChannelInner {
                 id: channel_id,
-                state: state::State::Initialized,
+                state: Box::new(state::Initialized),
             },
             _mpi: mpi,
             _marker: PhantomData,
@@ -130,7 +126,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
             );
         }
         let mut inner = self.inner;
-        inner.state = state::State::Started;
+        inner.state = Box::new(state::Started);
         Ok(VencChannel {
             inner: inner,
             _mpi: self._mpi,
@@ -172,7 +168,7 @@ impl<'a> VencChannel<'a, state::Started> {
             );
         }
         let mut inner = self.inner;
-        inner.state = state::State::Started;
+        inner.state = Box::new(state::Started);
         Ok(VencChannel {
             inner,
             _mpi: self._mpi,
