@@ -1,3 +1,4 @@
+use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
@@ -10,7 +11,7 @@ pub mod state {
 
 pub struct AiqContext<S> {
     inner: AiqContextInner,
-    _marker: PhantomData<S>,
+    _marker: PhantomData<S>, 
 }
 
 impl AiqContext<state::Initialized> {
@@ -31,7 +32,13 @@ impl AiqContext<state::Initialized> {
             )
         };
 
-        Self { inner: AiqContextInner { ctx }, _marker: PhantomData }
+        Self {
+            inner: AiqContextInner {
+                ctx,
+                state: Box::new(state::Initialized) as Box<dyn Any>,
+            },
+            _marker: PhantomData,
+        }
     }
 
     pub fn start(self) -> AiqContext<state::Started> {
@@ -52,28 +59,45 @@ impl AiqContext<state::Initialized> {
             }
         }
 
-        AiqContext { inner: self.inner, _marker: PhantomData }
+        let mut inner = self.inner;
+        inner.state = Box::new(state::Started) as Box<dyn Any>;
+        AiqContext { inner: inner, _marker: PhantomData }
     }
 }
 
 impl AiqContext<state::Started> {
     pub fn stop(self) -> AiqContext<state::Initialized> {
-        unsafe {
-            ffi::rk_aiq_uapi2_sysctl_stop(self.inner.ctx, false);
+        self.inner.stop();
+
+        let mut inner = self.inner;
+        inner.state = Box::new(state::Initialized) as Box<dyn Any>;
+        AiqContext {
+            inner, _marker: PhantomData
         }
-        AiqContext { inner: self.inner, _marker: PhantomData }
     }
 }
 
 struct AiqContextInner {
     ctx: *mut ffi::rk_aiq_sys_ctx_s,
+    state: Box<dyn Any>,
 }
 
 impl Drop for AiqContextInner {
     fn drop(&mut self) {
         println!("Dropping AIQ context...");
+        if self.state.type_id() == TypeId::of::<state::Started>() {
+            self.stop();
+        }
         unsafe {
             ffi::rk_aiq_uapi2_sysctl_deinit(self.ctx);
+        }
+    }
+}
+
+impl AiqContextInner {
+    fn stop(&self) -> () {
+        unsafe {
+            ffi::rk_aiq_uapi2_sysctl_stop(self.ctx, false);
         }
     }
 }
