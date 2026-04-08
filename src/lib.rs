@@ -32,8 +32,6 @@ pub enum Error {
     InvalidDevId { id: u8 },
     #[snafu(display("Requested too many pipes: {num}"))]
     RequestedTooManyPipes { num: u8 },
-    #[snafu(display("Invalid pipe id: {id}"))]
-    InvalidPipeId { id: u8 },
     #[snafu(display("Invalid channel id: {id}"))]
     InvalidChannelId { id: u8 },
     #[snafu(display("Invalid frame pointer"))]
@@ -165,11 +163,11 @@ impl<'a> RockitDev<'a> {
         Ok(Self { _mpi: mpi, id: dev_id, _dev: dev, pipe })
     }
 
-    pub fn get_pipe(&self, pipe_id: u8) -> Result<ViPipe<'_>, Error> {
+    pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipe<'_>> {
         if pipe_id as u32 >= self.pipe.u32Num {
-            return Err(Error::InvalidPipeId { id: pipe_id });
+            return None;
         }
-        Ok(ViPipe::new(self, pipe_id as i32))
+        Some(ViPipe::new(self, pipe_id as i32))
     }
 }
 

@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::io::Write;
 
 use rusty_rockit::RockitSys;
@@ -11,13 +12,13 @@ fn main() {
     let height = 1080;
 
     let aiq_ctx = AiqContext::init(camera_id);
-    let aiq_ctx = aiq_ctx.start();
+    let _aiq_ctx = aiq_ctx.start();
 
     let rockit_sys = RockitSys::init().expect("Rockit");
 
-    let dev = rockit_sys.camera(camera_id, 1).expect("Rockit dev");
+    let cam = rockit_sys.camera(camera_id, 1).expect("Rockit dev");
 
-    let pipe = dev.get_pipe(0).expect("Rockit pipe");
+    let pipe = cam.get_pipe(0).expect("Rockit pipe");
     let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
 
     let enc_channel = rockit_sys.encoder(0, width, height).expect("Encoder channel");
@@ -26,7 +27,7 @@ fn main() {
         let enc = enc_channel.bind(&channel).expect("Bind encoder");
         let mut frame = enc.alloc_frame();
 
-        let mut file = std::fs::File::create("test_frame.h264").expect("Create file");
+        let mut file = File::create("test_frame.h264").expect("Create file");
 
         for i in 0..30 {
             let stream = enc.get_stream(&mut frame).expect("Encoder stream");
@@ -38,6 +39,4 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(30));
         }
     }
-
-    aiq_ctx.stop();
 }
