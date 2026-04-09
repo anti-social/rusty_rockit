@@ -16,10 +16,10 @@ aiq = ["rockit-sys/aiq"]
 
 [dependencies]
 rockit-sys = { path = "rockit-sys" }
-snafu = "0.9.0"
+snafu = "0.9"
 
 [profile.release]
 strip = true
 
 [build-dependencies]
-cc = "1.2.59"
+cc = "1.2"
