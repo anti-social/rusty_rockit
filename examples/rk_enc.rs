@@ -11,12 +11,12 @@ fn main() {
     let width = 1920;
     let height = 1080;
 
-    let aiq_ctx = AiqContext::init(camera_id);
-    let _aiq_ctx = aiq_ctx.start();
+    let aiq_ctx = AiqContext::init(camera_id).expect("AIQ context");
+    let _aiq_ctx = aiq_ctx.start().expect("AIQ start");
 
     let rockit_sys = RockitSys::init().expect("Rockit");
 
-    let cam = rockit_sys.camera(camera_id, 1).expect("Rockit dev");
+    let cam = rockit_sys.camera(camera_id, 1).expect("Camera device");
 
     let pipe = cam.get_pipe(0).expect("Rockit pipe");
     let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
