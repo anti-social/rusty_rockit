@@ -1,17 +1,64 @@
 use std::fs::File;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
+use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
 
-fn main() {
-    println!("Hello rockit!");
+/// Test rockchip encoder
+#[derive(Debug, FromArgs)]
+pub struct Args {
+    /// camera id
+    #[argh(option, short = 'c', default = "0")]
+    camera_id: u8,
+    /// logging system
+    #[argh(option, short = 'e', default = "Encoder::H264")]
+    encoder: Encoder,
+    /// output file
+    #[argh(option, short = 'o')]
+    output_file: Option<PathBuf>,
+}
 
-    let camera_id = 0;
+#[derive(Debug, FromArgValue)]
+enum Encoder {
+    H264,
+    Hevc,
+}
+
+fn main() {
+    let args: Args = argh::from_env();
+
+    let camera_id = args.camera_id;
     let width = 1920;
     let height = 1080;
 
+    let codec = match args.encoder {
+        Encoder::H264 => Codec::H264 {
+            rate_control: H26xRateControl::Cbr {
+                gop: 30,
+                framerate: 30,
+                bitrate_kbps: 4 * 1024,
+            },
+            profile: H264Profile::High,
+        },
+        Encoder::Hevc => Codec::Hevc {
+            rate_control: H26xRateControl::Cbr {
+                gop: 30,
+                framerate: 30,
+                bitrate_kbps: 4 * 1024,
+            },
+            profile: HevcProfile::Main,
+        },
+    };
+
+    let output_filename = args.output_file.as_deref()
+        .unwrap_or_else(|| match args.encoder {
+            Encoder::H264 => Path::new("test-stream.h264"),
+            Encoder::Hevc => Path::new("test-stream.hevc"),
+        });
+        
     let aiq_ctx = AiqContext::init(camera_id).expect("AIQ context");
     let _aiq_ctx = aiq_ctx.start().expect("AIQ start");
 
@@ -27,22 +74,7 @@ fn main() {
         &VencConfig {
             width,
             height,
-            // codec: Codec::H264 {
-            //     rate_control: H26xRateControl::Cbr {
-            //         gop: 30,
-            //         framerate: 30,
-            //         bitrate_kbps: 4 * 1024,
-            //     },
-            //     profile: H264Profile::High,
-            // },
-            codec: Codec::Hevc {
-                rate_control: H26xRateControl::Cbr {
-                    gop: 30,
-                    framerate: 30,
-                    bitrate_kbps: 4 * 1024,
-                },
-                profile: HevcProfile::Main,
-            },
+            codec,
             buf_count: 2,
         }
     ).expect("Encoder channel");
@@ -51,7 +83,7 @@ fn main() {
         let enc = enc_channel.bind(&channel).expect("Bind encoder");
         let mut frame = enc.alloc_frame();
 
-        let mut file = File::create("test-stream.h264").expect("Create file");
+        let mut file = File::create(output_filename).expect("Create file");
 
         for i in 0..30 {
             let stream = enc.get_stream(&mut frame).expect("Encoder stream");
