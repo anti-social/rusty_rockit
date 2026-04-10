@@ -242,9 +242,7 @@ struct VencChannelInner {
 
 impl VencChannelInner {
     fn stop(&self) -> Result<(), Error> {
-        log::info!(
-            "Dropping encoder channel in state {:?}: {}", self.state, self.id
-        );
+        log::info!("Stopping encoder: {}", self.id);
         if !self.state.is::<state::Started>() {
             return Ok(());
         }
@@ -260,6 +258,7 @@ impl Drop for VencChannelInner {
         if let Err(e) = self.stop() {
             log::error!("Error stopping encoder: {e}");
         }
+        log::info!("Dropping encoder in state: {}", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VENC_DestroyChn(self.id),

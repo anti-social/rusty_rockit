@@ -98,10 +98,10 @@ struct AiqContextInner {
 
 impl Drop for AiqContextInner {
     fn drop(&mut self) {
-        log::info!("Dropping AIQ context...");
         if let Err(e) = self.stop() {
             log::error!("Error stopping AIQ: {e}");
         }
+        log::info!("Dropping AIQ context...");
         unsafe {
             ffi::rk_aiq_uapi2_sysctl_deinit(self.ctx);
         }
