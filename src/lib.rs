@@ -7,7 +7,7 @@ use snafu::Snafu;
 #[cfg(feature = "aiq")]
 pub mod aiq;
 pub mod venc;
-use venc::{VencChannel, VencChannelConfig};
+use venc::{VencChannel, VencConfig};
 pub mod vi;
 use vi::Camera;
 
@@ -86,7 +86,7 @@ impl RockitSys {
     }
 
     pub fn encoder<'a>(
-        &'a self, channel_id: u8, cfg: &VencChannelConfig
+        &'a self, channel_id: u8, cfg: &VencConfig
     ) -> Result<VencChannel<'a, venc::state::Initialized>, Error> {
         VencChannel::new(self, channel_id, cfg)
     }

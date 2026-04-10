@@ -37,7 +37,7 @@ impl Codec {
             Self::Hevc { .. } => ffi::rkCODEC_ID_E_RK_VIDEO_ID_HEVC,
         }
     }
-    
+
     fn native_rate_control_mode(&self) -> ffi::rkVENC_RC_MODE_E {
         match self {
             Self::H264 { rate_control: H26xRateControl::Cbr { .. }, .. } => {
@@ -203,19 +203,19 @@ impl Codec {
 pub enum H26xRateControl {
     Cbr {
         gop: u16,
-        framerate: u8, 
+        framerate: u8,
         bitrate_kbps: u32,
     },
     Vbr {
         gop: u16,
-        framerate: u8, 
+        framerate: u8,
         bitrate_kbps: u32,
         max_bitrate_kbps: u32,
         min_bitrate_kbps: u32,
     },
     Avbr {
         gop: u16,
-        framerate: u8, 
+        framerate: u8,
         bitrate_kbps: u32,
         max_bitrate_kbps: u32,
         min_bitrate_kbps: u32,
@@ -261,7 +261,7 @@ impl Drop for VencChannelInner {
 }
 
 #[derive(Clone, Debug)]
-pub struct VencChannelConfig {
+pub struct VencConfig {
     pub width: u16,
     pub height: u16,
     pub codec: Codec,
@@ -282,7 +282,7 @@ impl<'a, S> VencChannel<'a, S> {
 
 impl<'a> VencChannel<'a, state::Initialized> {
     pub fn new(
-        mpi: &'a RockitSys, channel_id: u8, cfg: &VencChannelConfig
+        mpi: &'a RockitSys, channel_id: u8, cfg: &VencConfig
     ) -> Result<VencChannel<'a, state::Initialized>, Error> {
         let channel_id = channel_id as i32;
         let width = cfg.width as u32;

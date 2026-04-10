@@ -3,7 +3,7 @@ use std::io::Write;
 
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, VencChannelConfig};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, VencConfig};
 
 fn main() {
     println!("Hello rockit!");
@@ -24,7 +24,7 @@ fn main() {
 
     let enc_channel = rockit_sys.encoder(
         0,
-        &VencChannelConfig {
+        &VencConfig {
             width,
             height,
             codec: Codec::H264 {
