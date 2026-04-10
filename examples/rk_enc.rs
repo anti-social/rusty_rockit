@@ -3,7 +3,7 @@ use std::io::Write;
 
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, VencConfig};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
 
 fn main() {
     println!("Hello rockit!");
@@ -27,13 +27,21 @@ fn main() {
         &VencConfig {
             width,
             height,
-            codec: Codec::H264 {
+            // codec: Codec::H264 {
+            //     rate_control: H26xRateControl::Cbr {
+            //         gop: 30,
+            //         framerate: 30,
+            //         bitrate_kbps: 4 * 1024,
+            //     },
+            //     profile: H264Profile::High,
+            // },
+            codec: Codec::Hevc {
                 rate_control: H26xRateControl::Cbr {
                     gop: 30,
                     framerate: 30,
                     bitrate_kbps: 4 * 1024,
                 },
-                profile: H264Profile::High,
+                profile: HevcProfile::Main,
             },
             buf_count: 2,
         }

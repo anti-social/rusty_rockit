@@ -15,6 +15,7 @@ mpi = ["rockit-sys/mpi"]
 aiq = ["rockit-sys/aiq"]
 
 [dependencies]
+log = "0.4"
 rockit-sys = { path = "rockit-sys" }
 snafu = "0.9"
 

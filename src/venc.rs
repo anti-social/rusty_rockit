@@ -240,16 +240,25 @@ struct VencChannelInner {
     state: Box<dyn Any>,
 }
 
+impl VencChannelInner {
+    fn stop(&self) -> Result<(), Error> {
+        log::info!(
+            "Dropping encoder channel in state {:?}: {}", self.state, self.id
+        );
+        if !self.state.is::<state::Started>() {
+            return Ok(());
+        }
+        unsafe {
+            rk_check_err!(ffi::RK_MPI_VENC_StopRecvFrame(self.id));
+        }
+        Ok(())
+    }
+}
+
 impl Drop for VencChannelInner {
     fn drop(&mut self) {
-        println!("Dropping encoder channel in state {:?}: {}", self.state, self.id);
-        if self.state.is::<state::Started>() {
-            unsafe {
-                rk_log_err!(
-                    ffi::RK_MPI_VENC_StopRecvFrame(self.id),
-                    "Error stopping encoder"
-                );
-            }
+        if let Err(e) = self.stop() {
+            log::error!("Error stopping encoder: {e}");
         }
         unsafe {
             rk_log_err!(
@@ -376,13 +385,7 @@ impl<'a> VencChannel<'a, state::Started> {
     }
 
     pub fn stop(self) -> Result<VencChannel<'a, state::Initialized>, Error> {
-        println!("Stopping encoder: {}", self.id());
-        unsafe {
-            rk_log_err!(
-                ffi::RK_MPI_VENC_StopRecvFrame(self.id()),
-                "Error stopping receiving frames by encoder"
-            );
-        }
+        self.inner.stop()?;
         let mut inner = self.inner;
         inner.state = Box::new(state::Started);
         Ok(VencChannel {
@@ -400,7 +403,7 @@ pub struct VencChannelBind<'a> {
 
 impl<'a> Drop for VencChannelBind<'a> {
     fn drop(&mut self) {
-        println!(
+        log::info!(
             "Dropping bound encoder channel: vi channel = {}, venc channel = {}",
             self.vi_channel.id(),
             self.venc_channel.id(),
@@ -461,10 +464,10 @@ pub struct VencStream<'a, 'b> {
 
 impl<'a, 'b> Drop for VencStream<'a, 'b> {
     fn drop(&mut self) {
-        // println!(
-        //     "Releasing encoder stream: channel = {}",
-        //     self.channel.venc_channel.id(),
-        // );
+        log::trace!(
+            "Releasing encoder stream: channel = {}",
+            self.channel.venc_channel.id(),
+        );
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VENC_ReleaseStream(

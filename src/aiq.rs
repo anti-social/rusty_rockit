@@ -98,11 +98,9 @@ struct AiqContextInner {
 
 impl Drop for AiqContextInner {
     fn drop(&mut self) {
-        println!("Dropping AIQ context...");
-        if self.state.is::<state::Started>() {
-            if let Err(e) = self.stop() {
-                eprintln!("Error stopping AIQ: {e}");
-            }
+        log::info!("Dropping AIQ context...");
+        if let Err(e) = self.stop() {
+            log::error!("Error stopping AIQ: {e}");
         }
         unsafe {
             ffi::rk_aiq_uapi2_sysctl_deinit(self.ctx);
@@ -112,6 +110,10 @@ impl Drop for AiqContextInner {
 
 impl AiqContextInner {
     fn stop(&self) -> Result<(), Error> {
+        log::info!("Stopping AIQ context...");
+        if !self.state.is::<state::Started>() {
+            return Ok(());
+        }
         unsafe {
             let res = ffi::rk_aiq_uapi2_sysctl_stop(self.ctx, false);
             if res != ffi::XCamReturn_XCAM_RETURN_NO_ERROR {
@@ -123,9 +125,14 @@ impl AiqContextInner {
 }
 
 extern "C" fn isp_err_callback(msg: *mut ffi::rk_aiq_err_msg_t) -> i32 {
+    if msg.is_null() {
+        return ffi::XCamReturn_XCAM_RETURN_NO_ERROR;
+    }
     let err_code = unsafe { (*msg).err_code };
     if err_code == ffi::XCamReturn_XCAM_RETURN_BYPASS {
-        eprintln!("What should we do on xcam return bypass?");
+        log::warn!("What should we do on xcam return bypass?");
+    } else {
+        log::warn!("What should we do on xcam error {err_code}?");
     }
     return ffi::XCamReturn_XCAM_RETURN_NO_ERROR;
 }

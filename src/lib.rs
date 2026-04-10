@@ -56,7 +56,7 @@ macro_rules! rk_log_err {
     ($fn:expr, $msg:literal) => {
         let ret_code = $fn;
         if ret_code != crate::RK_SUCCESS {
-            eprintln!("{}: {}", $msg, ret_code);
+            log::error!("{}: {}", $msg, ret_code);
         }
     };
 }
