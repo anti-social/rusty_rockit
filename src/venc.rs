@@ -8,9 +8,231 @@ use rockit_sys::mpi as ffi;
 use crate::{Error, RockitSys, rk_check_err, rk_log_err};
 use crate::vi::ViChannel;
 
+type rkVENC_H265_CBR_S = ffi::rkVENC_H264_CBR_S;
+type rkVENC_H265_VBR_S = ffi::rkVENC_H264_VBR_S;
+type rkVENC_H265_AVBR_S = ffi::rkVENC_H264_AVBR_S;
+
 pub mod state {
     pub struct Initialized;
     pub struct Started;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Codec {
+    H264 {
+        rate_control: H26xRateControl,
+        profile: H264Profile,
+    },
+    Hevc {
+        rate_control: H26xRateControl,
+        profile: HevcProfile,
+    },
+    // TODO: Mjpeg
+}
+
+impl Codec {
+    fn native_id(&self) -> ffi::rkCODEC_ID_E {
+        match self {
+            Self::H264 { .. } => ffi::rkCODEC_ID_E_RK_VIDEO_ID_AVC,
+            Self::Hevc { .. } => ffi::rkCODEC_ID_E_RK_VIDEO_ID_HEVC,
+        }
+    }
+    
+    fn native_rate_control_mode(&self) -> ffi::rkVENC_RC_MODE_E {
+        match self {
+            Self::H264 { rate_control: H26xRateControl::Cbr { .. }, .. } => {
+                ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H264CBR
+            }
+            Self::H264 { rate_control: H26xRateControl::Vbr { .. }, .. } => {
+                ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H264VBR
+            }
+            Self::H264 { rate_control: H26xRateControl::Avbr { .. }, .. } => {
+                ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H264AVBR
+            }
+            Self::Hevc { rate_control: H26xRateControl::Cbr { .. }, .. } => {
+                ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H265CBR
+            }
+            Self::Hevc { rate_control: H26xRateControl::Vbr { .. }, .. } => {
+                ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H265VBR
+            }
+            Self::Hevc { rate_control: H26xRateControl::Avbr { .. }, .. } => {
+                ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H265AVBR
+            }
+        }
+    }
+
+    fn native_profile(&self) -> u32 {
+        match self {
+            Self::H264 { profile: H264Profile::Baseline, .. } => {
+                ffi::rkH264E_PROFILE_E_H264E_PROFILE_BASELINE
+            }
+            Self::H264 { profile: H264Profile::Main, .. } => {
+                ffi::rkH264E_PROFILE_E_H264E_PROFILE_MAIN
+            }
+            Self::H264 { profile: H264Profile::High, .. } => {
+                ffi::rkH264E_PROFILE_E_H264E_PROFILE_HIGH
+            }
+            Self::Hevc { profile: HevcProfile::Main, .. } => {
+                ffi::rkH265E_PROFILE_E_H265E_PROFILE_MAIN
+            }
+            Self::Hevc { profile: HevcProfile::Main10, .. } => {
+                ffi::rkH265E_PROFILE_E_H265E_PROFILE_MAIN10
+            }
+        }
+    }
+
+    fn native_rate_control_attrs(&self) -> ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+        match *self {
+            Self::H264 {
+                rate_control: H26xRateControl::Cbr { framerate, bitrate_kbps, gop },
+                ..
+            } => {
+                ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+                    stH264Cbr: ffi::rkVENC_H264_CBR_S {
+                        u32Gop: gop as _,
+                        fr32DstFrameRateNum: framerate as _,
+                        fr32DstFrameRateDen: 1,
+                        u32SrcFrameRateNum: framerate as _,
+                        u32SrcFrameRateDen: 1,
+                        u32BitRate: bitrate_kbps,
+                        u32StatTime: 0,
+                    }
+                }
+            }
+            Self::H264 {
+                rate_control: H26xRateControl::Vbr {
+                    gop, framerate, bitrate_kbps, max_bitrate_kbps, min_bitrate_kbps
+                },
+                ..
+            } => {
+                ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+                    stH264Vbr: ffi::rkVENC_H264_VBR_S {
+                        u32Gop: gop as _,
+                        fr32DstFrameRateNum: framerate as _,
+                        fr32DstFrameRateDen: 1,
+                        u32SrcFrameRateNum: framerate as _,
+                        u32SrcFrameRateDen: 1,
+                        u32BitRate: bitrate_kbps,
+                        u32MaxBitRate: max_bitrate_kbps,
+                        u32MinBitRate: min_bitrate_kbps,
+                        u32StatTime: 0,
+                    }
+                }
+            }
+            Self::H264 {
+                rate_control: H26xRateControl::Avbr {
+                    gop, framerate, bitrate_kbps, max_bitrate_kbps, min_bitrate_kbps
+                },
+                ..
+            } => {
+                ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+                    stH264Avbr: ffi::rkVENC_H264_AVBR_S {
+                        u32Gop: gop as _,
+                        fr32DstFrameRateNum: framerate as _,
+                        fr32DstFrameRateDen: 1,
+                        u32SrcFrameRateNum: framerate as _,
+                        u32SrcFrameRateDen: 1,
+                        u32BitRate: bitrate_kbps,
+                        u32MaxBitRate: max_bitrate_kbps,
+                        u32MinBitRate: min_bitrate_kbps,
+                        u32StatTime: 0,
+                    }
+                }
+            }
+            Self::Hevc {
+                rate_control: H26xRateControl::Cbr { framerate, bitrate_kbps, gop },
+                ..
+            } => {
+                ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+                    stH265Cbr: rkVENC_H265_CBR_S {
+                        u32Gop: gop as _,
+                        fr32DstFrameRateNum: framerate as _,
+                        fr32DstFrameRateDen: 1,
+                        u32SrcFrameRateNum: framerate as _,
+                        u32SrcFrameRateDen: 1,
+                        u32BitRate: bitrate_kbps,
+                        u32StatTime: 0,
+                    }
+                }
+            }
+            Self::Hevc {
+                rate_control: H26xRateControl::Vbr {
+                    gop, framerate, bitrate_kbps, max_bitrate_kbps, min_bitrate_kbps
+                },
+                ..
+            } => {
+                ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+                    stH265Vbr: rkVENC_H265_VBR_S {
+                        u32Gop: gop as _,
+                        fr32DstFrameRateNum: framerate as _,
+                        fr32DstFrameRateDen: 1,
+                        u32SrcFrameRateNum: framerate as _,
+                        u32SrcFrameRateDen: 1,
+                        u32BitRate: bitrate_kbps,
+                        u32MaxBitRate: max_bitrate_kbps,
+                        u32MinBitRate: min_bitrate_kbps,
+                        u32StatTime: 0,
+                    }
+                }
+            }
+            Self::Hevc {
+                rate_control: H26xRateControl::Avbr {
+                    gop, framerate, bitrate_kbps, max_bitrate_kbps, min_bitrate_kbps
+                },
+                ..
+            } => {
+                ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
+                    stH265Avbr: rkVENC_H265_AVBR_S {
+                        u32Gop: gop as _,
+                        fr32DstFrameRateNum: framerate as _,
+                        fr32DstFrameRateDen: 1,
+                        u32SrcFrameRateNum: framerate as _,
+                        u32SrcFrameRateDen: 1,
+                        u32BitRate: bitrate_kbps,
+                        u32MaxBitRate: max_bitrate_kbps,
+                        u32MinBitRate: min_bitrate_kbps,
+                        u32StatTime: 0,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum H26xRateControl {
+    Cbr {
+        gop: u16,
+        framerate: u8, 
+        bitrate_kbps: u32,
+    },
+    Vbr {
+        gop: u16,
+        framerate: u8, 
+        bitrate_kbps: u32,
+        max_bitrate_kbps: u32,
+        min_bitrate_kbps: u32,
+    },
+    Avbr {
+        gop: u16,
+        framerate: u8, 
+        bitrate_kbps: u32,
+        max_bitrate_kbps: u32,
+        min_bitrate_kbps: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum H264Profile {
+    Baseline,
+    Main,
+    High,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum HevcProfile {
+    Main,
+    Main10,
 }
 
 struct VencChannelInner {
@@ -38,6 +260,14 @@ impl Drop for VencChannelInner {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct VencChannelConfig {
+    pub width: u16,
+    pub height: u16,
+    pub codec: Codec,
+    pub buf_count: u8,
+}
+
 pub struct VencChannel<'a, S> {
     inner: VencChannelInner,
     _mpi: &'a RockitSys,
@@ -52,26 +282,16 @@ impl<'a, S> VencChannel<'a, S> {
 
 impl<'a> VencChannel<'a, state::Initialized> {
     pub fn new(
-        mpi: &'a RockitSys, channel_id: u8, width: u16, height: u16
+        mpi: &'a RockitSys, channel_id: u8, cfg: &VencChannelConfig
     ) -> Result<VencChannel<'a, state::Initialized>, Error> {
         let channel_id = channel_id as i32;
-        let width = width as u32;
-        let height = height as u32;
+        let width = cfg.width as u32;
+        let height = cfg.height as u32;
         unsafe {
             let channel_attr = ffi::rkVENC_CHN_ATTR_S {
                 stRcAttr: ffi::rkVENC_RC_ATTR_S {
-                    enRcMode: ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H264CBR,
-                    __bindgen_anon_1: ffi::rkVENC_RC_ATTR_S__bindgen_ty_1 {
-                        stH264Cbr: ffi::rkVENC_H264_CBR_S {
-                            u32BitRate: 8 * 1024,
-                            u32Gop: 60,
-                            fr32DstFrameRateDen: 1,
-                            fr32DstFrameRateNum: 30,
-                            u32SrcFrameRateDen: 1,
-                            u32SrcFrameRateNum: 30,
-                            u32StatTime: 0,
-                        },
-                    }
+                    enRcMode: cfg.codec.native_rate_control_mode(),
+                    __bindgen_anon_1: cfg.codec.native_rate_control_attrs(),
                 },
                 stGopAttr: ffi::rkVENC_GOP_ATTR_S {
                     enGopMode: ffi::rkVENC_GOP_MODE_E_VENC_GOPMODE_INIT,
@@ -80,9 +300,9 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     u32TsvcPreload: 0,
                 },
                 stVencAttr: ffi::rkVENC_ATTR_S {
-                    enType: ffi::rkCODEC_ID_E_RK_VIDEO_ID_AVC,
+                    enType: cfg.codec.native_id(),
                     enPixelFormat: ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV420SP,
-                    u32Profile: ffi::rkH264E_PROFILE_E_H264E_PROFILE_HIGH,
+                    u32Profile: cfg.codec.native_profile(),
                     u32PicWidth: width,
                     u32PicHeight: height,
                     u32MaxPicWidth: width,
@@ -91,7 +311,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     u32VirHeight: height,
                     u32StreamBufCnt: 3,
                     u32BufSize: width * height * 3 / 2,
-                    bByFrame: true as u32,
+                    bByFrame: false as u32,
                     enMirror: ffi::rkMIRROR_E_MIRROR_NONE,
                     __bindgen_anon_1: ffi::rkVENC_ATTR_S__bindgen_ty_1 {
                         stAttrH264e: ffi::rkVENC_ATTR_H264_S {

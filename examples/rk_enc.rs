@@ -3,6 +3,7 @@ use std::io::Write;
 
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, VencChannelConfig};
 
 fn main() {
     println!("Hello rockit!");
@@ -21,7 +22,22 @@ fn main() {
     let pipe = cam.get_pipe(0).expect("Rockit pipe");
     let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
 
-    let enc_channel = rockit_sys.encoder(0, width, height).expect("Encoder channel");
+    let enc_channel = rockit_sys.encoder(
+        0,
+        &VencChannelConfig {
+            width,
+            height,
+            codec: Codec::H264 {
+                rate_control: H26xRateControl::Cbr {
+                    gop: 30,
+                    framerate: 30,
+                    bitrate_kbps: 4 * 1024,
+                },
+                profile: H264Profile::High,
+            },
+            buf_count: 2,
+        }
+    ).expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");
     {
         let enc = enc_channel.bind(&channel).expect("Bind encoder");
