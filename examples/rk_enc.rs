@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
@@ -86,7 +87,8 @@ fn main() {
         let mut file = File::create(output_filename).expect("Create file");
 
         for i in 0..30 {
-            let stream = enc.get_stream(&mut frame).expect("Encoder stream");
+            let stream = enc.get_stream(&mut frame, Duration::from_millis(1))
+                .expect("Encoder stream");
             let packet_data = stream.data().expect("Packet data");
             println!("{}: Packet len: {}", i + 1, packet_data.len());
 

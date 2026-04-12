@@ -2,6 +2,7 @@ use core::slice;
 use std::any::Any; 
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
 
@@ -438,11 +439,15 @@ impl<'a> VencChannelBind<'a> {
         }
     }
 
-    pub fn get_stream<'b>(&'a self, frame: &'b mut StreamFrame) -> Result<VencStream<'a, 'b>, Error> {
+    pub fn get_stream<'b>(
+        &'a self,
+        frame: &'b mut StreamFrame,
+        timeout: Duration,
+    ) -> Result<VencStream<'a, 'b>, Error> {
         unsafe {
             rk_check_err!(
                 ffi::RK_MPI_VENC_GetStream(
-                    self.venc_channel.id(), &mut frame.frame as *mut _, 200
+                    self.venc_channel.id(), &mut frame.frame as *mut _, timeout.as_millis() as i32
                 )
             );
         }
