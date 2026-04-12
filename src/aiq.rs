@@ -2,7 +2,7 @@ use std::any::Any;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
-use rockit_sys::aiq as ffi;
+pub use rockit_sys::aiq as ffi;
 use snafu::Snafu;
 
 #[derive(Clone, Debug, Snafu)]

@@ -1,7 +1,7 @@
 use std::cell::OnceCell;
 use std::sync::{Arc, Mutex};
 
-use rockit_sys::mpi as ffi;
+pub use rockit_sys::mpi as ffi;
 use snafu::Snafu;
 
 #[cfg(feature = "aiq")]
@@ -27,9 +27,9 @@ const fn rk_def_err(module: i32, level: i32, errid: i32) -> i32 {
 
 #[derive(Clone, Debug)]
 pub struct RockitErr {
-    id: ffi::rkEN_ERR_CODE_E,
-    level: ffi::rkERR_LEVEL_E,
-    module: ffi::rkMOD_ID_E,
+    pub id: ffi::rkEN_ERR_CODE_E,
+    pub level: ffi::rkERR_LEVEL_E,
+    pub module: ffi::rkMOD_ID_E,
 }
 
 impl RockitErr {
