@@ -25,6 +25,22 @@ const fn rk_def_err(module: i32, level: i32, errid: i32) -> i32 {
     RK_ERR_APPID as i32 | ((module) << 16 ) | ((level) << 13) | (errid)
 }
 
+#[derive(Clone, Debug)]
+pub struct RockitErr {
+    id: ffi::rkEN_ERR_CODE_E,
+    level: ffi::rkERR_LEVEL_E,
+    module: ffi::rkMOD_ID_E,
+}
+
+impl RockitErr {
+    pub const fn from_code(code: i32) -> Self {
+        let id = (code & 0b0001_1111_1111_1111) as u32;
+        let level = ((code >> 13) & 0b0111) as u32;
+        let module = ((code >> 3) & 0b1111_1111) as u32;
+        Self { id, level, module }
+    }
+}
+
 #[derive(Clone, Debug, Snafu)]
 pub enum Error {
     #[snafu(display("MPI is already initialized"))]
@@ -37,8 +53,8 @@ pub enum Error {
     InvalidChannelId { id: u8 },
     #[snafu(display("Invalid frame pointer"))]
     InvalidFramePointer,
-    #[snafu(display("Rockit error code: {code}"))]
-    Rockit { code: i32 }
+    #[snafu(display("Rockit error code: {err:?}"))]
+    Rockit { err: RockitErr }
 }
 
 #[macro_export]
@@ -46,7 +62,7 @@ macro_rules! rk_check_err {
     ($fn:expr) => {
         let ret_code = $fn;
         if ret_code != crate::RK_SUCCESS {
-            return Err(crate::Error::Rockit { code: ret_code });
+            return Err(crate::Error::Rockit { err: crate::RockitErr::from_code(ret_code) });
         }
     };
 }
