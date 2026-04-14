@@ -1,9 +1,11 @@
 use std::any::Any;
+use std::ffi::CString;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
+use std::path::{Path, PathBuf};
 
 pub use rockit_sys::aiq as ffi;
-use snafu::Snafu;
+use snafu::{OptionExt, Snafu};
 
 #[derive(Clone, Debug, Snafu)]
 pub enum Error {
@@ -11,6 +13,8 @@ pub enum Error {
     Aiq { code: i32 },
     #[snafu(display("Error initializing AIQ system context"))]
     AiqSystemContext,
+    #[snafu(display("Invalid IQ files path: {path:?}"))]
+    InvalidIqFilesPath { path: PathBuf },
 }
 
 pub mod state {
@@ -24,7 +28,9 @@ pub struct AiqContext<S> {
 }
 
 impl AiqContext<state::Initialized> {
-    pub fn init(cam_id: u8) -> Result<AiqContext<state::Initialized>, Error> {
+    pub fn init(
+        cam_id: u8, iq_files: Option<&Path>
+    ) -> Result<AiqContext<state::Initialized>, Error> {
         let ctx = unsafe {
             let mut aiq_static_info = MaybeUninit::zeroed();
             let res = ffi::rk_aiq_uapi2_sysctl_enumStaticMetas(
@@ -36,9 +42,20 @@ impl AiqContext<state::Initialized> {
             }
             let aiq_static_info = aiq_static_info.assume_init();
 
+            let iq_files = match iq_files {
+                Some(p) => {
+                    CString::new(
+                        p.to_str().context(InvalidIqFilesPathSnafu { path: p.to_path_buf() })?
+                    )
+                        .map_err(|_| Error::InvalidIqFilesPath { path: p.to_path_buf() })?
+                }
+                None => {
+                    CString::from(c"/etc/iqfiles")
+                }
+            };
             let ctx_ptr = ffi::rk_aiq_uapi2_sysctl_init(
                 &aiq_static_info.sensor_info.sensor_name as *const u8,
-                c"/etc/iqfiles".as_ptr(),
+                iq_files.as_ptr(),
                 Some(isp_err_callback),
                 Some(isp_sof_callback),
             );

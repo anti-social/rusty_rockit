@@ -60,7 +60,7 @@ fn main() {
             Encoder::Hevc => Path::new("test-stream.hevc"),
         });
         
-    let aiq_ctx = AiqContext::init(camera_id).expect("AIQ context");
+    let aiq_ctx = AiqContext::init(camera_id, None).expect("AIQ context");
     let _aiq_ctx = aiq_ctx.start().expect("AIQ start");
 
     let rockit_sys = RockitSys::init().expect("Rockit");
