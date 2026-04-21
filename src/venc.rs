@@ -345,8 +345,8 @@ impl Drop for VencChannelInner {
 }
 
 pub struct VencChannel<'a, S> {
-    _mpi: &'a RockitSys,
     inner: VencChannelInner,
+    _mpi: &'a RockitSys,
     _marker: PhantomData<S>,
 }
 
@@ -461,8 +461,8 @@ impl<'a> VencChannel<'a, state::Started> {
 }
 
 pub struct VencChannelOwned<S> {
-    _mpi: RockitSys,
     inner: Rc<VencChannelInner>,
+    _mpi: RockitSys,
     _marker: PhantomData<S>,
 }
 
@@ -514,17 +514,17 @@ impl VencChannelOwned<state::Started> {
 }
 
 pub struct VencChannelBindOwned {
-    _mpi: RockitSys,
-    _camera: Rc<CameraInner>,
-    _vi_channel: Rc<ViChannelInner>,
-    _venc_channel: Rc<VencChannelInner>,
     inner: Rc<ChannelBind>,
+    _venc_channel: Rc<VencChannelInner>,
+    _vi_channel: Rc<ViChannelInner>,
+    _camera: Rc<CameraInner>,
+    _mpi: RockitSys,
 }
 
 pub struct VencChannelBind<'a> {
+    inner: ChannelBind,
     _vi_channel: &'a ViChannel<'a>,
     _venc_channel: &'a VencChannel<'a, state::Started>,
-    inner: ChannelBind,
 }
 
 impl<'a> VencChannelBind<'a> {
@@ -591,9 +591,9 @@ impl<'a> VencStreamInner<'a> {
 }
 
 pub struct VencStreamOwned<'a> {
-    _mpi: RockitSys,
-    _channel: Rc<VencChannelInner>,
     inner: VencStreamInner<'a>,
+    _channel: Rc<VencChannelInner>,
+    _mpi: RockitSys,
 }
 
 impl<'a> VencStreamOwned<'a> {
@@ -603,8 +603,8 @@ impl<'a> VencStreamOwned<'a> {
 }
 
 pub struct VencStream<'a, 'b> {
-    _channel: &'a VencChannel<'a, state::Started>,
     inner: VencStreamInner<'b>,
+    _channel: &'a VencChannel<'a, state::Started>,
 }
 
 impl<'a, 'b> VencStream<'a, 'b> {

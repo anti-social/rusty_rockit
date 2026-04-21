@@ -34,8 +34,8 @@ impl MemBufferPoolInner {
 }
 
 pub struct MemBufferPool<'a> {
-    _mpi: &'a RockitSys,
     inner: MemBufferPoolInner,
+    _mpi: &'a RockitSys,
 }
 
 impl<'a> MemBufferPool<'a> {
@@ -84,8 +84,8 @@ impl<'a> MemBufferPool<'a> {
 }
 
 pub struct MemBufferPoolOwned {
-    _mpi: RockitSys,
     inner: Rc<MemBufferPoolInner>,
+    _mpi: RockitSys,
 }
 
 impl MemBufferPoolOwned {
@@ -152,8 +152,8 @@ impl MemBufferInner {
 }
 
 pub struct MemBuffer<'a> {
-    _pool: &'a MemBufferPool<'a>,
     inner: MemBufferInner,
+    _pool: &'a MemBufferPool<'a>,
 }
 
 impl<'a> MemBuffer<'a> {
@@ -174,9 +174,9 @@ impl<'a> MemBuffer<'a> {
 }
 
 pub struct MemBufferOwned {
-    _mpi: RockitSys,
-    _pool: Rc<MemBufferPoolInner>,
     inner: Rc<MemBufferInner>,
+    _pool: Rc<MemBufferPoolInner>,
+    _mpi: RockitSys,
 }
 
 impl MemBufferOwned {
@@ -188,11 +188,11 @@ impl MemBufferOwned {
         Rc::get_mut(&mut self.inner).unwrap().data_mut()
     }
 
-    pub fn new_frame(&self, width: u16, height: u16) -> MbFrameOwned {
+    pub fn new_frame(&self, width: u16, height: u16) -> MbFrameOwned<'_> {
         MbFrameOwned {
             _mpi: self._mpi.clone(),
             _pool: Rc::clone(&self._pool),
-            _buf: Rc::clone(&self.inner),
+            _buf: &self.inner,
             inner: MbFrameInner::new(&self.inner, width, height),
         }
     }
@@ -236,20 +236,16 @@ impl MbFrameInner {
     pub(crate) fn frame(&self) -> &ffi::rkVIDEO_FRAME_INFO_S {
         &self.frame
     }
-
-    // pub(crate) fn frame_mut(&mut self) -> &mut ffi::rkVIDEO_FRAME_INFO_S {
-    //     &mut self.frame
-    // }
 }
 
 pub struct MbFrame<'a> {
-    _buf: &'a MemBuffer<'a>,
     pub(crate) inner: MbFrameInner,
+    _buf: &'a MemBuffer<'a>,
 }
 
-pub struct MbFrameOwned {
-    _mpi: RockitSys,
-    _pool: Rc<MemBufferPoolInner>,
-    _buf: Rc<MemBufferInner>,
+pub struct MbFrameOwned<'a> {
     pub(crate) inner: MbFrameInner,
+    _buf: &'a MemBufferInner,
+    _pool: Rc<MemBufferPoolInner>,
+    _mpi: RockitSys,
 }

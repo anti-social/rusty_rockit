@@ -75,25 +75,27 @@ fn main() {
             codec,
             buf_count: 2,
         }
-    ).expect("Encoder channel");
+    )
+        .expect("Encoder channel")
+        .into_owned();
     let enc_channel = enc_channel.start().expect("Encoder start");
-    let buffer_pool = rockit_sys.pool().expect("Buffer pool");
+    let buffer_pool = rockit_sys.pool()
+        .expect("Buffer pool")
+        .into_owned();
     let buf_size = args.width as u32 * args.height as u32 * 3 / 2;
     let mut mem_buffer = buffer_pool.get_buffer(buf_size).expect("Mem buffer");
-    {
-        let data = mem_buffer.data_mut().expect("Buffer data");
-        data.fill(128);
-    }
-    let mut frame = mem_buffer.new_frame(args.width, args.height);
     let mut enc_frame = StreamFrame::new();
     for i in 0..30 {
+        let data = mem_buffer.data_mut().expect("Buffer data");
+        data.fill(i * 8);
+        let mut frame = mem_buffer.new_frame(args.width, args.height);
         enc_channel.send_frame(&mut frame, Duration::from_millis(100)).expect("Send frame");
 
-            let stream = enc_channel.get_stream(&mut enc_frame, Duration::from_millis(100))
-                .expect("Encoder stream");
-            let packet_data = stream.data().expect("Packet data");
-            println!("{}: Packet len: {}", i + 1, packet_data.len());
+        let stream = enc_channel.get_stream(&mut enc_frame, Duration::from_millis(100))
+            .expect("Encoder stream");
+        let packet_data = stream.data().expect("Packet data");
+        println!("{}: Packet len: {}", i + 1, packet_data.len());
 
-            out_file.write_all(packet_data).expect("Write file");
+        out_file.write_all(packet_data).expect("Write file");
     }
 }

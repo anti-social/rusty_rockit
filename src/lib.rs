@@ -125,6 +125,7 @@ struct RockitSysInner;
 
 impl Drop for RockitSysInner {
     fn drop(&mut self) {
+        log::info!("Exiting MPI system");
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_SYS_Exit(),
