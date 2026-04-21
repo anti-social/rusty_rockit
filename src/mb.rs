@@ -1,13 +1,41 @@
 use core::slice;
 use std::ffi::c_void;
-use std::mem::MaybeUninit;
 use std::ptr;
+use std::rc::Rc;
 
 use crate::{Error, ffi, rk_log_err, RockitSys};
 
+struct MemBufferPoolInner {
+    id: u32,
+}
+
+impl Drop for MemBufferPoolInner {
+    fn drop(&mut self) {
+        log::debug!("Destroying memory buffer pool: {}", self.id);
+        unsafe {
+            rk_log_err!(
+                ffi::RK_MPI_MB_DestroyPool(self.id),
+                "Error destroying memory buffer pool"
+            );
+        }
+    }
+}
+
+impl MemBufferPoolInner {
+    pub fn get_buffer(&self, size: u32) -> Result<MemBufferInner, Error> {
+        let buf_ptr = unsafe {
+            ffi::RK_MPI_MB_GetMB(self.id, size as u64, true as u32)
+        };
+        if buf_ptr.is_null() {
+            return Err(Error::GetBuffer);
+        }
+        Ok(MemBufferInner { buf_ptr, size: size as _, pool_id: self.id })
+    }
+}
+
 pub struct MemBufferPool<'a> {
     _mpi: &'a RockitSys,
-    id: u32,
+    inner: MemBufferPoolInner,
 }
 
 impl<'a> MemBufferPool<'a> {
@@ -32,43 +60,68 @@ impl<'a> MemBufferPool<'a> {
             return Err(Error::CreatePool);
         }
 
-        Ok(MemBufferPool { _mpi: mpi, id: pool_id })
+        Ok(MemBufferPool {
+            _mpi: mpi,
+            inner: MemBufferPoolInner { id: pool_id },
+        })
     }
 
     pub fn id(&self) -> u32 {
-        self.id
+        self.inner.id
     }
 
     pub fn get_buffer(&self, size: u32) -> Result<MemBuffer<'_>, Error> {
-        let buf_ptr = unsafe {
-            ffi::RK_MPI_MB_GetMB(self.id, size as u64, true as u32)
-        };
-        if buf_ptr.is_null() {
+        self.inner.get_buffer(size)
+            .map(|inner| MemBuffer { _pool: self, inner })
+    }
 
+    pub fn into_owned(self) -> MemBufferPoolOwned {
+        MemBufferPoolOwned {
+            _mpi: self._mpi.clone(),
+            inner: Rc::new(self.inner),
         }
-        Ok(MemBuffer { pool: self, buf_ptr, size: size as _ })
     }
 }
 
-impl<'a> Drop for MemBufferPool<'a> {
+pub struct MemBufferPoolOwned {
+    _mpi: RockitSys,
+    inner: Rc<MemBufferPoolInner>,
+}
+
+impl MemBufferPoolOwned {
+    pub fn id(&self) -> u32 {
+        self.inner.id
+    }
+
+    pub fn get_buffer(&self, size: u32) -> Result<MemBufferOwned, Error> {
+        self.inner.get_buffer(size)
+            .map(|inner| MemBufferOwned {
+                _mpi: self._mpi.clone(),
+                _pool: Rc::clone(&self.inner),
+                inner: Rc::new(inner),
+            })
+    }
+}
+
+pub struct MemBufferInner {
+    buf_ptr: *mut c_void,
+    size: usize,
+    pool_id: u32,
+}
+
+impl Drop for MemBufferInner {
     fn drop(&mut self) {
-        log::debug!("Destroying memory buffer pool: {}", self.id);
+        log::trace!("Releasing memory buffer from pool: {}", self.pool_id);
         unsafe {
             rk_log_err!(
-                ffi::RK_MPI_MB_DestroyPool(self.id),
-                "Error destroying memory buffer pool"
+                ffi::RK_MPI_MB_ReleaseMB(self.buf_ptr),
+                "Error releasing memory buffer"
             );
         }
     }
 }
 
-pub struct MemBuffer<'a> {
-    pool: &'a MemBufferPool<'a>,
-    buf_ptr: *mut c_void,
-    size: usize,
-}
-
-impl<'a> MemBuffer<'a> {
+impl MemBufferInner {
     pub fn data(&self) -> Result<&[u8], Error> {
         let data = unsafe {
             let data_ptr = ffi::RK_MPI_MB_Handle2VirAddr(self.buf_ptr);
@@ -96,31 +149,61 @@ impl<'a> MemBuffer<'a> {
         };
         Ok(data)
     }
-
-    pub fn new_frame(&self, width: u16, height: u16) -> MbFrame<'_> {
-        MbFrame::new(self, width, height)
-    }
 }
 
-impl<'a> Drop for MemBuffer<'a> {
-    fn drop(&mut self) {
-        log::trace!("Releasing memory buffer from pool: {}", self.pool.id());
-        unsafe {
-            rk_log_err!(
-                ffi::RK_MPI_MB_ReleaseMB(self.buf_ptr),
-                "Error releasing memory buffer"
-            );
+pub struct MemBuffer<'a> {
+    _pool: &'a MemBufferPool<'a>,
+    inner: MemBufferInner,
+}
+
+impl<'a> MemBuffer<'a> {
+    pub fn data(&self) -> Result<&[u8], Error> {
+        self.inner.data()
+    }
+
+    pub fn data_mut(&mut self) -> Result<&mut [u8], Error> {
+        self.inner.data_mut()
+    }
+
+    pub fn new_frame(&self, width: u16, height: u16) -> MbFrame<'_> {
+        MbFrame {
+            _buf: self,
+            inner: MbFrameInner::new(&self.inner, width, height),
         }
     }
 }
 
-pub struct MbFrame<'a> {
-    buf: &'a MemBuffer<'a>,
+pub struct MemBufferOwned {
+    _mpi: RockitSys,
+    _pool: Rc<MemBufferPoolInner>,
+    inner: Rc<MemBufferInner>,
+}
+
+impl MemBufferOwned {
+    pub fn data(&self) -> Result<&[u8], Error> {
+        self.inner.data()
+    }
+
+    pub fn data_mut(&mut self) -> Result<&mut [u8], Error> {
+        Rc::get_mut(&mut self.inner).unwrap().data_mut()
+    }
+
+    pub fn new_frame(&self, width: u16, height: u16) -> MbFrameOwned {
+        MbFrameOwned {
+            _mpi: self._mpi.clone(),
+            _pool: Rc::clone(&self._pool),
+            _buf: Rc::clone(&self.inner),
+            inner: MbFrameInner::new(&self.inner, width, height),
+        }
+    }
+}
+
+pub(crate) struct MbFrameInner {
     frame: ffi::rkVIDEO_FRAME_INFO_S,
 }
 
-impl<'a> MbFrame<'a> {
-    fn new(buf: &'a MemBuffer<'a>, width: u16, height: u16) -> MbFrame<'a> {
+impl MbFrameInner {
+    fn new(buf: &MemBufferInner, width: u16, height: u16) -> MbFrameInner {
         let width = width as u32;
         let height = height as u32;
         let frame = ffi::rkVIDEO_FRAME_INFO_S {
@@ -147,13 +230,26 @@ impl<'a> MbFrame<'a> {
             },
         };
 
-        Self {
-            buf,
-            frame,
-        }
+        Self { frame }
     }
 
-    pub(crate) fn frame(&mut self) -> &mut ffi::rkVIDEO_FRAME_INFO_S {
-        &mut self.frame
+    pub(crate) fn frame(&self) -> &ffi::rkVIDEO_FRAME_INFO_S {
+        &self.frame
     }
+
+    // pub(crate) fn frame_mut(&mut self) -> &mut ffi::rkVIDEO_FRAME_INFO_S {
+    //     &mut self.frame
+    // }
+}
+
+pub struct MbFrame<'a> {
+    _buf: &'a MemBuffer<'a>,
+    pub(crate) inner: MbFrameInner,
+}
+
+pub struct MbFrameOwned {
+    _mpi: RockitSys,
+    _pool: Rc<MemBufferPoolInner>,
+    _buf: Rc<MemBufferInner>,
+    pub(crate) inner: MbFrameInner,
 }
