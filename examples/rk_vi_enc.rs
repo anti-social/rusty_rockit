@@ -5,21 +5,15 @@ use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
+use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
 
 /// Test rockchip encoder
 #[derive(Debug, FromArgs)]
 pub struct Args {
-    // /// input raw file
-    // #[argh(option, short = 'i')]
-    // input_file: PathBuf,
-    /// width
-    #[argh(option, short = 'w')]
-    width: u16,
-    /// height
-    #[argh(option, short = 'h')]
-    height: u16,
-
+    /// camera id
+    #[argh(option, short = 'c', default = "0")]
+    camera_id: u8,
     /// logging system
     #[argh(option, short = 'e', default = "Encoder::H264")]
     encoder: Encoder,
@@ -35,7 +29,13 @@ enum Encoder {
 }
 
 fn main() {
+    env_logger::init();
+
     let args: Args = argh::from_env();
+
+    let camera_id = args.camera_id;
+    let width = 1920;
+    let height = 1080;
 
     let codec = match args.encoder {
         Encoder::H264 => Codec::H264 {
@@ -58,40 +58,47 @@ fn main() {
 
     let output_filename = args.output_file.as_deref()
         .unwrap_or_else(|| match args.encoder {
-            Encoder::H264 => Path::new("test-enc.h264"),
-            Encoder::Hevc => Path::new("test-enc.hevc"),
+            Encoder::H264 => Path::new("test-stream.h264"),
+            Encoder::Hevc => Path::new("test-stream.hevc"),
         });
-    let mut out_file = File::create(output_filename).expect("Create file");
-        
+
+    log::info!("Starting AIQ...");
+    let aiq_ctx = AiqContext::init(camera_id, None).expect("AIQ context");
+    let _aiq_ctx = aiq_ctx.start().expect("AIQ start");
+
+    log::info!("Creating MPI context...");
     let rockit_sys = RockitSys::init().expect("Rockit");
+
+    let cam = rockit_sys.camera(camera_id, 1).expect("Camera device");
+
+    let pipe = cam.get_pipe(0).expect("Rockit pipe");
+    let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
 
     let enc_channel = rockit_sys.encoder(
         0,
         &VencConfig {
-            width: args.width,
-            height: args.height,
+            width,
+            height,
             codec,
             buf_count: 2,
         }
     ).expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");
-    let buffer_pool = rockit_sys.pool().expect("Buffer pool");
-    let buf_size = args.width as u32 * args.height as u32 * 3 / 2;
-    let mut mem_buffer = buffer_pool.get_buffer(buf_size).expect("Mem buffer");
     {
-        let data = mem_buffer.data_mut().expect("Buffer data");
-        data.fill(128);
-    }
-    let mut frame = mem_buffer.new_frame(args.width, args.height);
-    let mut enc_frame = enc_channel.alloc_frame();
-    for i in 0..30 {
-        enc_channel.send_frame(&mut frame, Duration::from_millis(100)).expect("Send frame");
+        let enc = enc_channel.bind(&channel).expect("Bind encoder");
+        let mut frame = enc_channel.alloc_frame();
 
-            let stream = enc_channel.get_stream(&mut enc_frame, Duration::from_millis(100))
+        let mut file = File::create(output_filename).expect("Create file");
+
+        for i in 0..30 {
+            let stream = enc_channel.get_stream(&mut frame, Duration::from_millis(100))
                 .expect("Encoder stream");
             let packet_data = stream.data().expect("Packet data");
             println!("{}: Packet len: {}", i + 1, packet_data.len());
 
-            out_file.write_all(packet_data).expect("Write file");
+            file.write_all(packet_data).expect("Write file");
+
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
     }
 }

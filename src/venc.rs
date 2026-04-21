@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
 
+use crate::mb::MbFrame;
 use crate::{Error, RockitSys, rk_check_err, rk_log_err};
 use crate::vi::ViChannel;
 
@@ -243,7 +244,7 @@ struct VencChannelInner {
 
 impl VencChannelInner {
     fn stop(&self) -> Result<(), Error> {
-        log::info!("Stopping encoder: {}", self.id);
+        log::debug!("Stopping encoder: {}", self.id);
         if !self.state.is::<state::Started>() {
             return Ok(());
         }
@@ -259,7 +260,7 @@ impl Drop for VencChannelInner {
         if let Err(e) = self.stop() {
             log::error!("Error stopping encoder: {e}");
         }
-        log::info!("Dropping encoder in state: {}", self.id);
+        log::debug!("Dropping encoder in state: {}", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VENC_DestroyChn(self.id),
@@ -384,6 +385,35 @@ impl<'a> VencChannel<'a, state::Started> {
         Ok(VencChannelBind { vi_channel, venc_channel: self })
     }
 
+    pub fn alloc_frame(&self) -> StreamFrame {
+        StreamFrame::new()
+    }
+
+    pub fn send_frame(&'a self, frame: &mut MbFrame, timeout: Duration) -> Result<(), Error> {
+        unsafe {
+            rk_check_err!(
+                ffi::RK_MPI_VENC_SendFrame(self.id(), frame.frame() as *const _, timeout.as_millis() as i32)
+            );
+        }
+        Ok(())
+    }
+
+    pub fn get_stream<'b>(
+        &'a self,
+        frame: &'b mut StreamFrame,
+        timeout: Duration,
+    ) -> Result<VencStream<'a, 'b>, Error> {
+        unsafe {
+            rk_check_err!(
+                ffi::RK_MPI_VENC_GetStream(
+                    self.id(), &mut frame.frame as *mut _, timeout.as_millis() as i32
+                )
+            );
+        }
+
+        Ok(VencStream { channel: self, frame })
+    }
+
     pub fn stop(self) -> Result<VencChannel<'a, state::Initialized>, Error> {
         self.inner.stop()?;
         let mut inner = self.inner;
@@ -403,7 +433,7 @@ pub struct VencChannelBind<'a> {
 
 impl<'a> Drop for VencChannelBind<'a> {
     fn drop(&mut self) {
-        log::info!(
+        log::debug!(
             "Dropping bound encoder channel: vi channel = {}, venc channel = {}",
             self.vi_channel.id(),
             self.venc_channel.id(),
@@ -429,6 +459,17 @@ impl<'a> Drop for VencChannelBind<'a> {
 
 impl<'a> VencChannelBind<'a> {
     pub fn alloc_frame(&self) -> StreamFrame {
+        StreamFrame::new()
+    }
+}
+
+pub struct StreamFrame {
+    frame: ffi::rkVENC_STREAM_S,
+    _packet: Box<ffi::VENC_PACK_S>,
+}
+
+impl StreamFrame {
+    pub fn new() -> Self {
         unsafe {
             let mut frame = MaybeUninit::<ffi::rkVENC_STREAM_S>::zeroed();
             let mut packet = Box::new(std::mem::zeroed::<ffi::VENC_PACK_S>());
@@ -438,31 +479,10 @@ impl<'a> VencChannelBind<'a> {
             }
         }
     }
-
-    pub fn get_stream<'b>(
-        &'a self,
-        frame: &'b mut StreamFrame,
-        timeout: Duration,
-    ) -> Result<VencStream<'a, 'b>, Error> {
-        unsafe {
-            rk_check_err!(
-                ffi::RK_MPI_VENC_GetStream(
-                    self.venc_channel.id(), &mut frame.frame as *mut _, timeout.as_millis() as i32
-                )
-            );
-        }
-
-        Ok(VencStream { channel: self, frame })
-    }
-}
-
-pub struct StreamFrame {
-    frame: ffi::rkVENC_STREAM_S,
-    _packet: Box<ffi::VENC_PACK_S>,
 }
 
 pub struct VencStream<'a, 'b> {
-    channel: &'a VencChannelBind<'a>,
+    channel: &'a VencChannel<'a, state::Started>,
     frame: &'b mut StreamFrame,
 }
 
@@ -470,12 +490,12 @@ impl<'a, 'b> Drop for VencStream<'a, 'b> {
     fn drop(&mut self) {
         log::trace!(
             "Releasing encoder stream: channel = {}",
-            self.channel.venc_channel.id(),
+            self.channel.id(),
         );
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VENC_ReleaseStream(
-                    self.channel.venc_channel.id(), &mut self.frame.frame as *mut _
+                    self.channel.id(), &mut self.frame.frame as *mut _
                 ),
                 "Error releasing encoder stream"
             );

@@ -6,6 +6,8 @@ use snafu::Snafu;
 
 #[cfg(feature = "aiq")]
 pub mod aiq;
+pub mod mb;
+use mb::MemBufferPool;
 pub mod venc;
 use venc::{VencChannel, VencConfig};
 pub mod vi;
@@ -41,6 +43,7 @@ impl RockitErr {
     }
 }
 
+#[non_exhaustive]
 #[derive(Clone, Debug, Snafu)]
 pub enum Error {
     #[snafu(display("MPI is already initialized"))]
@@ -53,6 +56,8 @@ pub enum Error {
     InvalidChannelId { id: u8 },
     #[snafu(display("Invalid frame pointer"))]
     InvalidFramePointer,
+    #[snafu(display("Invalid pool id"))]
+    CreatePool,
     #[snafu(display("Rockit error code: {err:?}"))]
     Rockit { err: RockitErr }
 }
@@ -105,6 +110,12 @@ impl RockitSys {
         &'a self, channel_id: u8, cfg: &VencConfig
     ) -> Result<VencChannel<'a, venc::state::Initialized>, Error> {
         VencChannel::new(self, channel_id, cfg)
+    }
+
+    pub fn pool<'a>(
+        &'a self
+    ) -> Result<MemBufferPool<'a>, Error> {
+        MemBufferPool::new(self)
     }
 }
 

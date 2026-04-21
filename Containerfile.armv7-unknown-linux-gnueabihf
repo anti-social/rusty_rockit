@@ -1,7 +1,7 @@
 FROM ghcr.io/cross-rs/armv7-unknown-linux-gnueabihf:edge
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN echo Debian arch: $CROSS_DEB_ARCH
+RUN echo "Debian arch: $CROSS_DEB_ARCH"
 
 ENV PATH=$PATH:/project/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin
 ENV CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-rockchip830-linux-uclibcgnueabihf-gcc
