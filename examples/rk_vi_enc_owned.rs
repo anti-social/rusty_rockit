@@ -7,7 +7,7 @@ use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
-    self, Codec, H26xRateControl, H264Profile, HevcProfile, VencChannelOwned, VencConfig,
+    self, Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencChannelBindOwned, VencChannelOwned, VencConfig
 };
 
 /// Test rockchip encoder
@@ -30,11 +30,13 @@ enum CodecKind {
     Hevc,
 }
 
-struct Encoder {
+struct CameraEncoder {
     enc_channel: VencChannelOwned<venc::state::Started>,
+    _bind: VencChannelBindOwned,
+    frame: StreamFrame,
 }
 
-impl Encoder {
+impl CameraEncoder {
     fn new(
         mpi: &RockitSys,
         camera_id: u8,
@@ -78,11 +80,14 @@ impl Encoder {
             .expect("Encoder channel")
             .into_owned();
         let enc_channel = enc_channel.start().expect("Encoder start");
-        Ok(Self { enc_channel })
+        let bind = enc_channel.bind(&channel).expect("Bind encoder");
+        let frame = StreamFrame::new();
+        Ok(Self { enc_channel, _bind: bind, frame })
     }
 
-    fn process_frame(&self) {
-        
+    fn get_frame(&mut self) -> Result<&[u8], rusty_rockit::Error> {
+        let stream = self.enc_channel.get_stream(&mut self.frame, Duration::from_millis(100))?;
+        stream.data()
     }
 }
 
@@ -108,25 +113,13 @@ fn main() {
 
     log::info!("Creating MPI context...");
     let rockit_sys = RockitSys::init().expect("Rockit");
-    let encoder = Encoder::new(&rockit_sys, camera_id, args.encoder, width, height);
+    let mut encoder = CameraEncoder::new(&rockit_sys, camera_id, args.encoder, width, height)
+        .expect("Encoder");
     let mut file = File::create(output_filename).expect("Create file");
     for i in 0..30 {
-        encoder.process_frame().expect("Process frame");
+        let packet_data = encoder.get_frame().expect("Get frame");
+        println!("{}: Packet len: {}", i + 1, packet_data.len());
+
+        file.write_all(packet_data).expect("Write file");
     }
-    // {
-    //     let enc = enc_channel.bind(&channel).expect("Bind encoder");
-    //     let mut frame = enc_channel.alloc_frame();
-
-
-    //     for i in 0..30 {
-    //         let stream = enc_channel.get_stream(&mut frame, Duration::from_millis(100))
-    //             .expect("Encoder stream");
-    //         let packet_data = stream.data().expect("Packet data");
-    //         println!("{}: Packet len: {}", i + 1, packet_data.len());
-
-    //         file.write_all(packet_data).expect("Write file");
-
-    //         std::thread::sleep(std::time::Duration::from_millis(30));
-    //     }
-    // }
 }

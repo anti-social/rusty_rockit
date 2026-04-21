@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig};
 
 /// Test rockchip encoder
 #[derive(Debug, FromArgs)]
@@ -83,7 +83,7 @@ fn main() {
         data.fill(128);
     }
     let mut frame = mem_buffer.new_frame(args.width, args.height);
-    let mut enc_frame = enc_channel.alloc_frame();
+    let mut enc_frame = StreamFrame::new();
     for i in 0..30 {
         enc_channel.send_frame(&mut frame, Duration::from_millis(100)).expect("Send frame");
 

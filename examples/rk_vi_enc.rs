@@ -6,7 +6,7 @@ use std::time::Duration;
 use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig};
 
 /// Test rockchip encoder
 #[derive(Debug, FromArgs)]
@@ -85,8 +85,8 @@ fn main() {
     ).expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");
     {
-        let enc = enc_channel.bind(&channel).expect("Bind encoder");
-        let mut frame = enc_channel.alloc_frame();
+        let _enc = enc_channel.bind(&channel).expect("Bind encoder");
+        let mut frame = StreamFrame::new();
 
         let mut file = File::create(output_filename).expect("Create file");
 

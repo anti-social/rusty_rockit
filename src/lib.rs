@@ -58,6 +58,8 @@ pub enum Error {
     InvalidFramePointer,
     #[snafu(display("Invalid pool id"))]
     CreatePool,
+    #[snafu(display("Cannot get buffer"))]
+    GetBuffer,
     #[snafu(display("Rockit error code: {err:?}"))]
     Rockit { err: RockitErr }
 }
@@ -131,6 +133,29 @@ impl Drop for RockitSysInner {
         }
         let mut mpi_sys_init = MPI_SYS_INIT.lock().unwrap();
         mpi_sys_init.take();
+    }
+}
+
+pub(crate) struct ChannelBind {
+    src_channel: ffi::rkMPP_CHN_S, 
+    dst_channel: ffi::rkMPP_CHN_S,
+}
+
+impl Drop for ChannelBind {
+    fn drop(&mut self) {
+        log::debug!(
+            "Unbind channels: {} -> {}",
+            self.src_channel.s32ChnId,
+            self.dst_channel.s32ChnId,
+        );
+        unsafe {
+            rk_log_err!(
+                ffi::RK_MPI_SYS_UnBind(
+                    &self.src_channel as *const _, &self.dst_channel as *const _
+                ),
+                "Error unbinding channels"
+            );
+        }
     }
 }
 
