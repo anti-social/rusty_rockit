@@ -1,7 +1,6 @@
 use core::slice;
 use std::any::Any; 
 use std::marker::PhantomData;
-use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -345,8 +344,8 @@ impl Drop for VencChannelInner {
 }
 
 pub struct VencChannel<'a, S> {
-    _mpi: &'a RockitSys,
     inner: VencChannelInner,
+    _mpi: &'a RockitSys,
     _marker: PhantomData<S>,
 }
 
@@ -432,7 +431,11 @@ impl<'a> VencChannel<'a, state::Initialized> {
 impl<'a> VencChannel<'a, state::Started> {
     pub fn bind(&'a self, vi_channel: &'a ViChannel) -> Result<VencChannelBind<'a>, Error> {
         self.inner.bind(vi_channel.id(), vi_channel.pipe_id())
-            .map(|inner| VencChannelBind { _vi_channel: vi_channel, _venc_channel: self, inner })
+            .map(|inner| VencChannelBind {
+                _inner: inner,
+                venc_channel: self,
+                _vi_channel: vi_channel,
+            })
     }
 
     pub fn send_frame(&self, frame: &mut MbFrame, timeout: Duration) -> Result<(), Error> {
@@ -461,8 +464,8 @@ impl<'a> VencChannel<'a, state::Started> {
 }
 
 pub struct VencChannelOwned<S> {
-    _mpi: RockitSys,
     inner: Rc<VencChannelInner>,
+    _mpi: RockitSys,
     _marker: PhantomData<S>,
 }
 
@@ -490,8 +493,8 @@ impl VencChannelOwned<state::Started> {
                 _mpi: self._mpi.clone(),
                 _camera: Rc::clone(&vi_channel.camera),
                 _vi_channel: Rc::clone(&vi_channel.inner),
-                _venc_channel: Rc::clone(&self.inner),
-                inner: Rc::new(inner),
+                venc_channel: Rc::clone(&self.inner),
+                _inner: Rc::new(inner),
             })
     }
 
@@ -514,22 +517,39 @@ impl VencChannelOwned<state::Started> {
 }
 
 pub struct VencChannelBindOwned {
-    _mpi: RockitSys,
-    _camera: Rc<CameraInner>,
+    _inner: Rc<ChannelBind>,
+    venc_channel: Rc<VencChannelInner>,
     _vi_channel: Rc<ViChannelInner>,
-    _venc_channel: Rc<VencChannelInner>,
-    inner: Rc<ChannelBind>,
+    _camera: Rc<CameraInner>,
+    _mpi: RockitSys,
+}
+
+impl VencChannelBindOwned {
+    pub fn get_stream<'a>(
+        &self, frame: &'a mut StreamFrame, timeout: Duration
+    ) -> Result<VencStreamOwned<'a>, Error> {
+        self.venc_channel.get_stream(frame, timeout)
+            .map(|inner| VencStreamOwned {
+                _mpi: self._mpi.clone(),
+                _channel: Rc::clone(&self.venc_channel),
+                inner,                
+            })
+    }
 }
 
 pub struct VencChannelBind<'a> {
+    _inner: ChannelBind,
+    venc_channel: &'a VencChannel<'a, state::Started>,
     _vi_channel: &'a ViChannel<'a>,
-    _venc_channel: &'a VencChannel<'a, state::Started>,
-    inner: ChannelBind,
 }
 
 impl<'a> VencChannelBind<'a> {
-    pub fn alloc_frame(&self) -> StreamFrame {
-        StreamFrame::new()
+    pub fn get_stream<'b>(
+        &'a self,
+        frame: &'b mut StreamFrame,
+        timeout: Duration,
+    ) -> Result<VencStream<'a, 'b>, Error> {
+        self.venc_channel.get_stream(frame, timeout)
     }
 }
 
@@ -541,12 +561,13 @@ pub struct StreamFrame {
 impl StreamFrame {
     pub fn new() -> Self {
         unsafe {
-            let mut frame = MaybeUninit::<ffi::rkVENC_STREAM_S>::zeroed();
-            let mut packet = Box::new(std::mem::zeroed::<ffi::VENC_PACK_S>());
-            (*frame.as_mut_ptr()).pstPack = &mut *packet;
-            StreamFrame {
-                frame: frame.assume_init(), _packet: packet,
-            }
+            let mut frame = std::mem::zeroed::<ffi::rkVENC_STREAM_S>();
+            // Allocate it on the heap so it has a stable address
+            // then we can store its pointer to a `pstPack` field.
+            // Could we update a `pstPack` field just before getting encoder stream?
+            let mut packet = Box::new(std::mem::zeroed::<ffi::rkVENC_PACK_S>());
+            frame.pstPack = &mut *packet;
+            StreamFrame { frame, _packet: packet }
         }
     }
 }
@@ -591,9 +612,9 @@ impl<'a> VencStreamInner<'a> {
 }
 
 pub struct VencStreamOwned<'a> {
-    _mpi: RockitSys,
-    _channel: Rc<VencChannelInner>,
     inner: VencStreamInner<'a>,
+    _channel: Rc<VencChannelInner>,
+    _mpi: RockitSys,
 }
 
 impl<'a> VencStreamOwned<'a> {
@@ -603,8 +624,8 @@ impl<'a> VencStreamOwned<'a> {
 }
 
 pub struct VencStream<'a, 'b> {
-    _channel: &'a VencChannel<'a, state::Started>,
     inner: VencStreamInner<'b>,
+    _channel: &'a VencChannel<'a, state::Started>,
 }
 
 impl<'a, 'b> VencStream<'a, 'b> {

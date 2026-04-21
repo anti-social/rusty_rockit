@@ -15,6 +15,7 @@ pub(crate) struct CameraInner {
 
 impl Drop for CameraInner {
     fn drop(&mut self) {
+        log::debug!("Disable camera device");
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_DisableDev(self.id),
@@ -24,18 +25,9 @@ impl Drop for CameraInner {
     }
 }
 
-// impl CameraInner {
-//     pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipeInner> {
-//         if pipe_id as u32 >= self.pipe.u32Num {
-//             return None;
-//         }
-//         Some(ViPipeInner::new(self, pipe_id as i32))
-//     }
-// }
-
 pub struct CameraOwned {
-    _mpi: RockitSys,
     inner: Rc<CameraInner>,
+    _mpi: RockitSys,
 }
 
 impl CameraOwned {
@@ -52,8 +44,8 @@ impl CameraOwned {
 }
 
 pub struct Camera<'a> {
-    _mpi: &'a RockitSys,
     inner: CameraInner,
+    _mpi: &'a RockitSys,
 }
 
 impl<'a> Camera<'a> {
@@ -119,9 +111,9 @@ pub struct ViPipe<'a> {
 }
 
 pub struct ViPipeOwned {
-    _mpi: RockitSys,
-    camera: Rc<CameraInner>,
     id: i32,
+    camera: Rc<CameraInner>,
+    _mpi: RockitSys,
 }
 
 impl ViPipeOwned {
@@ -165,6 +157,7 @@ pub(crate) struct ViChannelInner {
 
 impl Drop for ViChannelInner {
     fn drop(&mut self) {
+        log::debug!("Disabling VI channel: {}", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_DisableChn(0, self.id),
@@ -254,9 +247,9 @@ impl ViChannelInner {
 }
 
 pub struct ViChannelOwned {
-    _mpi: RockitSys,
-    pub(crate) camera: Rc<CameraInner>,
     pub(crate) inner: Rc<ViChannelInner>,
+    pub(crate) camera: Rc<CameraInner>,
+    _mpi: RockitSys,
 }
 
 impl ViChannelOwned {
@@ -307,6 +300,7 @@ struct ViFrameInner {
 
 impl Drop for ViFrameInner {
     fn drop(&mut self) {
+        log::trace!("Releasing VI frame for channel: {}", self.channel_id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_ReleaseChnFrame(
@@ -336,8 +330,8 @@ impl ViFrameInner {
 }
 
 pub struct ViFrame<'a> {
-    _channel: &'a ViChannel<'a>,
     inner: ViFrameInner,
+    _channel: &'a ViChannel<'a>,
 }
 
 impl<'a> ViFrame<'a> {
@@ -355,10 +349,10 @@ impl<'a> ViFrame<'a> {
 }
 
 pub struct ViFrameOwned {
-    _mpi: RockitSys,
-    _camera: Rc<CameraInner>,
-    _channel: Rc<ViChannelInner>,
     inner: ViFrameInner,
+    _channel: Rc<ViChannelInner>,
+    _camera: Rc<CameraInner>,
+    _mpi: RockitSys,
 }
 
 impl ViFrameOwned {

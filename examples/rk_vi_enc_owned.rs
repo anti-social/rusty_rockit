@@ -7,7 +7,7 @@ use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
-    self, Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencChannelBindOwned, VencChannelOwned, VencConfig
+    Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencChannelBindOwned, VencConfig
 };
 
 /// Test rockchip encoder
@@ -31,8 +31,7 @@ enum CodecKind {
 }
 
 struct CameraEncoder {
-    enc_channel: VencChannelOwned<venc::state::Started>,
-    _bind: VencChannelBindOwned,
+    enc: VencChannelBindOwned,
     frame: StreamFrame,
 }
 
@@ -82,11 +81,11 @@ impl CameraEncoder {
         let enc_channel = enc_channel.start().expect("Encoder start");
         let bind = enc_channel.bind(&channel).expect("Bind encoder");
         let frame = StreamFrame::new();
-        Ok(Self { enc_channel, _bind: bind, frame })
+        Ok(Self { enc: bind, frame })
     }
 
     fn get_frame(&mut self) -> Result<&[u8], rusty_rockit::Error> {
-        let stream = self.enc_channel.get_stream(&mut self.frame, Duration::from_millis(100))?;
+        let stream = self.enc.get_stream(&mut self.frame, Duration::from_millis(100))?;
         stream.data()
     }
 }
