@@ -243,6 +243,19 @@ struct VencChannelInner {
 }
 
 impl VencChannelInner {
+    pub fn start(&mut self) -> Result<(), Error> {
+        unsafe {
+            let recv_param = ffi::rkVENC_RECV_PIC_PARAM_S {
+                s32RecvPicNum: -1,
+            };
+            rk_check_err!(
+                ffi::RK_MPI_VENC_StartRecvFrame(self.id, &recv_param as *const _)
+            );
+        }
+        self.state = Box::new(state::Started);
+        Ok(())
+    }
+    
     fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping encoder: {}", self.id);
         if !self.state.is::<state::Started>() {
@@ -250,6 +263,21 @@ impl VencChannelInner {
         }
         unsafe {
             rk_check_err!(ffi::RK_MPI_VENC_StopRecvFrame(self.id));
+        }
+        Ok(())
+    }
+
+    pub fn get_stream(
+        &self,
+        frame: &mut StreamFrame,
+        timeout: Duration,
+    ) -> Result<(), Error> {
+        unsafe {
+            rk_check_err!(
+                ffi::RK_MPI_VENC_GetStream(
+                    self.id, &mut frame.frame as *mut _, timeout.as_millis() as i32
+                )
+            );
         }
         Ok(())
     }
@@ -282,6 +310,35 @@ pub struct VencChannel<'a, S> {
     inner: VencChannelInner,
     _mpi: &'a RockitSys,
     _marker: PhantomData<S>,
+}
+
+pub struct VencChannelOwned<S> {
+    inner: VencChannelInner,
+    _mpi: RockitSys,
+    _marker: PhantomData<S>,
+}
+
+impl VencChannelOwned<state::Initialized> {
+    pub fn start(mut self) -> Result<VencChannelOwned<state::Started>, Error> {
+        self.inner.start()?;
+        Ok(VencChannelOwned {
+            inner: self.inner,
+            _mpi: self._mpi.clone(),
+            _marker: PhantomData,
+        })
+    }
+}
+
+impl VencChannelOwned<state::Started> {
+    pub fn get_stream(
+        &self,
+        frame: &mut StreamFrame,
+        timeout: Duration,
+    ) -> Result<VencStreamOwned, Error> {
+        self.inner.get_stream(frame, timeout)?;
+
+        Ok(VencStreamOwned { channel: (), frame: () })
+    }
 }
 
 impl<'a, S> VencChannel<'a, S> {
@@ -345,22 +402,21 @@ impl<'a> VencChannel<'a, state::Initialized> {
         })
     }
 
-    pub fn start(self) -> Result<VencChannel<'a, state::Started>, Error> {
-        unsafe {
-            let recv_param = ffi::rkVENC_RECV_PIC_PARAM_S {
-                s32RecvPicNum: -1,
-            };
-            rk_check_err!(
-                ffi::RK_MPI_VENC_StartRecvFrame(self.id(), &recv_param as *const _)
-            );
-        }
-        let mut inner = self.inner;
-        inner.state = Box::new(state::Started);
+    pub fn start(mut self) -> Result<VencChannel<'a, state::Started>, Error> {
+        self.inner.start()?;
         Ok(VencChannel {
-            inner: inner,
+            inner: self.inner,
             _mpi: self._mpi,
             _marker: PhantomData,
         })
+    }
+
+    pub fn into_owned(self) -> VencChannelOwned<state::Initialized> {
+        VencChannelOwned {
+            inner: self.inner,
+            _mpi: self._mpi.clone(),
+            _marker: self._marker,
+        }
     }
 }
 
@@ -403,13 +459,7 @@ impl<'a> VencChannel<'a, state::Started> {
         frame: &'b mut StreamFrame,
         timeout: Duration,
     ) -> Result<VencStream<'a, 'b>, Error> {
-        unsafe {
-            rk_check_err!(
-                ffi::RK_MPI_VENC_GetStream(
-                    self.id(), &mut frame.frame as *mut _, timeout.as_millis() as i32
-                )
-            );
-        }
+        self.inner.get_stream(frame, timeout)?;
 
         Ok(VencStream { channel: self, frame })
     }
@@ -479,6 +529,11 @@ impl StreamFrame {
             }
         }
     }
+}
+
+pub struct VencStreamOwned {
+    channel: (),
+    frame: (),
 }
 
 pub struct VencStream<'a, 'b> {

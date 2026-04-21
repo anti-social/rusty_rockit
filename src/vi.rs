@@ -1,18 +1,19 @@
 use core::slice;
 use std::mem::MaybeUninit;
+use std::rc::Rc;
+use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
 
 use crate::{Error, rk_check_err, rk_log_err, RK_SUCCESS, RK_ERR_VI_NOT_CONFIG, RockitSys};
 
-pub struct Camera<'a> {
-    _mpi: &'a RockitSys,
+struct CameraInner {
     _dev: ffi::rkVI_DEV_ATTR_S,
     id: i32,
     pipe: ffi::rkVI_DEV_BIND_PIPE_S,
 }
 
-impl<'a> Drop for Camera<'a> {
+impl Drop for CameraInner {
     fn drop(&mut self) {
         unsafe {
             rk_log_err!(
@@ -21,6 +22,38 @@ impl<'a> Drop for Camera<'a> {
             );
         }
     }
+}
+
+// impl CameraInner {
+//     pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipeInner> {
+//         if pipe_id as u32 >= self.pipe.u32Num {
+//             return None;
+//         }
+//         Some(ViPipeInner::new(self, pipe_id as i32))
+//     }
+// }
+
+pub struct CameraOwned {
+    _mpi: RockitSys,
+    inner: Rc<CameraInner>,
+}
+
+impl CameraOwned {
+    pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipeOwned> {
+        if pipe_id as u32 >= self.inner.pipe.u32Num {
+            return None;
+        }
+        Some(ViPipeOwned {
+            _mpi: self._mpi.clone(),
+            camera: Rc::clone(&self.inner),
+            id: pipe_id as i32,
+        })
+    }
+}
+
+pub struct Camera<'a> {
+    _mpi: &'a RockitSys,
+    inner: CameraInner,
 }
 
 impl<'a> Camera<'a> {
@@ -59,20 +92,53 @@ impl<'a> Camera<'a> {
             (dev.assume_init(), pipe)
         };
 
-        Ok(Self { _mpi: mpi, id: dev_id, _dev: dev, pipe })
+        Ok(Self {
+            _mpi: mpi,
+            inner: CameraInner { id: dev_id, _dev: dev, pipe },
+        })
     }
 
     pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipe<'_>> {
-        if pipe_id as u32 >= self.pipe.u32Num {
+        if pipe_id as u32 >= self.inner.pipe.u32Num {
             return None;
         }
         Some(ViPipe::new(self, pipe_id as i32))
+    }
+
+    pub fn into_owned(self) -> CameraOwned {
+        CameraOwned {
+            _mpi: self._mpi.clone(),
+            inner: Rc::new(self.inner),
+        }
     }
 }
 
 pub struct ViPipe<'a> {
     _dev: &'a Camera<'a>,
     id: i32,
+}
+
+pub struct ViPipeOwned {
+    _mpi: RockitSys,
+    camera: Rc<CameraInner>,
+    id: i32,
+}
+
+impl ViPipeOwned {
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+
+    pub fn create_channel(
+        &self, channel_id: u8, width: u16, height: u16
+    ) -> Result<ViChannelOwned, Error> {
+        ViChannelInner::new(self.id, channel_id, width, height)
+            .map(|inner| ViChannelOwned {
+                _mpi: self._mpi.clone(),
+                camera: Rc::clone(&self.camera),
+                inner: Rc::new(inner),
+            })
+    } 
 }
 
 impl<'a> ViPipe<'a> {
@@ -87,18 +153,30 @@ impl<'a> ViPipe<'a> {
     pub fn create_channel(
         &self, channel_id: u8, width: u16, height: u16
     ) -> Result<ViChannel<'_>, Error> {
-        ViChannel::new(self, channel_id, width, height)
+        ViChannelInner::new(self.id, channel_id, width, height)
+            .map(|inner| ViChannel { pipe: self, inner })
     } 
 }
 
-pub struct ViChannel<'a> {
-    pipe: &'a ViPipe<'a>,
+struct ViChannelInner {
     id: i32,
+    pipe_id: i32,
 }
 
-impl<'a> ViChannel<'a> {
+impl Drop for ViChannelInner {
+    fn drop(&mut self) {
+        unsafe {
+            rk_log_err!(
+                ffi::RK_MPI_VI_DisableChn(0, self.id),
+                "Error disabling rockit channel"
+            );
+        }
+    }
+}
+
+impl ViChannelInner {
     fn new(
-        pipe: &'a ViPipe<'a>,
+        pipe_id: i32,
         channel_id: u8,
         width: u16,
         height: u16,
@@ -151,58 +229,88 @@ impl<'a> ViChannel<'a> {
                 },
             };
             rk_check_err!(
-                ffi::RK_MPI_VI_SetChnAttr(pipe.id, channel_id, &mut channel as *mut _)
+                ffi::RK_MPI_VI_SetChnAttr(pipe_id, channel_id, &mut channel as *mut _)
             );
-            rk_check_err!(ffi::RK_MPI_VI_EnableChn(pipe.id, channel_id));
+            rk_check_err!(ffi::RK_MPI_VI_EnableChn(pipe_id, channel_id));
             channel
         };
         
-        Ok(Self { pipe, id: channel_id })
+        Ok(Self { id: channel_id, pipe_id })
     }
 
+    pub fn get_frame(&self, timeout: Duration) -> Result<ViFrameInner, Error> {
+        let frame = unsafe {
+            let mut frame = MaybeUninit::zeroed();
+            rk_check_err!(
+                ffi::RK_MPI_VI_GetChnFrame(
+                    0, self.id, frame.as_mut_ptr(), timeout.as_millis() as i32
+                )
+            );
+            frame.assume_init()
+        };
+        
+        Ok(ViFrameInner { frame, pipe_id: self.pipe_id, channel_id: self.id })
+    }
+}
+
+pub struct ViChannelOwned {
+    _mpi: RockitSys,
+    camera: Rc<CameraInner>,
+    inner: Rc<ViChannelInner>,
+}
+
+impl ViChannelOwned {
     pub fn id(&self) -> i32 {
-        self.id
+        self.inner.id
+    }
+
+    pub fn pipe_id(&self) -> i32 {
+        self.inner.pipe_id
+    }
+
+    pub fn get_frame(&self, timeout: Duration) -> Result<ViFrameOwned, Error> {
+        self.inner.get_frame(timeout)
+            .map(|inner| ViFrameOwned {
+                _mpi: self._mpi.clone(),
+                camera: Rc::clone(&self.camera),
+                channel: Rc::clone(&self.inner),
+                inner,
+            })
+    }
+}
+
+pub struct ViChannel<'a> {
+    pipe: &'a ViPipe<'a>,
+    inner: ViChannelInner,
+}
+
+impl<'a> ViChannel<'a> {
+    pub fn id(&self) -> i32 {
+        self.inner.id
     }
 
     pub fn pipe_id(&self) -> i32 {
         self.pipe.id
     }
 
-    pub fn get_frame(&self) -> Result<ViFrame<'_>, Error> {
-        let vi_frame = unsafe {
-            let mut vi_frame = MaybeUninit::zeroed();
-            rk_check_err!(
-                ffi::RK_MPI_VI_GetChnFrame(0, self.id, vi_frame.as_mut_ptr(), 1000)
-            );
-            vi_frame.assume_init()
-        };
-
-        Ok(ViFrame { channel: self, frame: vi_frame })
+    pub fn get_frame(&self, timeout: Duration) -> Result<ViFrame<'_>, Error> {
+        self.inner.get_frame(timeout)
+            .map(|inner| ViFrame { channel: self, inner })
     }
 }
 
-impl<'a> Drop for ViChannel<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            rk_log_err!(
-                ffi::RK_MPI_VI_DisableChn(0, self.id),
-                "Error disabling rockit channel"
-            );
-        }
-    }
-}
-
-pub struct ViFrame<'a> {
-    channel: &'a ViChannel<'a>,
+struct ViFrameInner {
     frame: ffi::rkVIDEO_FRAME_INFO_S,
+    pipe_id: i32,
+    channel_id: i32,
 }
 
-impl<'a> Drop for ViFrame<'a> {
+impl Drop for ViFrameInner {
     fn drop(&mut self) {
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_ReleaseChnFrame(
-                    self.channel.pipe.id, self.channel.id, &self.frame as *const _
+                    self.pipe_id, self.channel_id, &self.frame as *const _
                 ),
                 "Error releasing channel frame"
             );
@@ -210,24 +318,38 @@ impl<'a> Drop for ViFrame<'a> {
     }
 }
 
+pub struct ViFrameOwned {
+    _mpi: RockitSys,
+    camera: Rc<CameraInner>,
+    channel: Rc<ViChannelInner>,
+    inner: ViFrameInner,
+}
+
+pub struct ViFrame<'a> {
+    channel: &'a ViChannel<'a>,
+    inner: ViFrameInner,
+}
+
+
 impl<'a> ViFrame<'a> {
     pub fn width(&self) -> u32 {
-        self.frame.stVFrame.u32Width
+        self.inner.frame.stVFrame.u32Width
     }
 
     pub fn height(&self) -> u32 {
-        self.frame.stVFrame.u32Height
+        self.inner.frame.stVFrame.u32Height
     }
 
     pub fn data(&self) -> Result<&[u8], Error> {
+        let frame = self.inner.frame;
         let data = unsafe {
-            let data_ptr = ffi::RK_MPI_MB_Handle2VirAddr(self.frame.stVFrame.pMbBlk);
+            let data_ptr = ffi::RK_MPI_MB_Handle2VirAddr(frame.stVFrame.pMbBlk);
             if data_ptr.is_null() {
                 return Err(Error::InvalidFramePointer);
             }
             slice::from_raw_parts(
                 data_ptr as *const u8,
-                self.frame.stVFrame.u32Width as usize * self.frame.stVFrame.u32Height as usize * 3 / 2
+                frame.stVFrame.u32Width as usize * frame.stVFrame.u32Height as usize * 3 / 2
             )
         };
         Ok(data)
