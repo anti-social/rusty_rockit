@@ -221,12 +221,12 @@ typedef struct rkVENC_STREAM_ADVANCE_INFO_H264_S {
 
 /* the advance information of the Jpege */
 typedef struct rkVENC_STREAM_ADVANCE_INFO_JPEG_S {
-    // RK_U32 u32Reserved;
+    RK_U32 u32Reserved;
 } VENC_STREAM_ADVANCE_INFO_JPEG_S;
 
 /* the advance information of the Prores */
 typedef struct rkVENC_STREAM_ADVANCE_INFO_PRORES_S {
-    // RK_U32 u32Reserved;
+    RK_U32 u32Reserved;
 } VENC_STREAM_ADVANCE_INFO_PRORES_S;
 
 /* the advance information of the h265e */
@@ -340,7 +340,7 @@ typedef struct rkVENC_ATTR_JPEG_S {
 
 /*the attribute of mjpege*/
 typedef struct rkVENC_ATTR_MJPEG_S {
-    // reserved
+    RK_U32 u32Reserved;
 } VENC_ATTR_MJPEG_S;
 
 /*the attribute of h264e*/
@@ -351,7 +351,7 @@ typedef struct rkVENC_ATTR_H264_S {
 
 /*the attribute of h265e*/
 typedef struct rkVENC_ATTR_H265_S {
-    // reserved
+    RK_U32 u32Reserved;
 } VENC_ATTR_H265_S;
 
 /*the attribute of the Venc*/

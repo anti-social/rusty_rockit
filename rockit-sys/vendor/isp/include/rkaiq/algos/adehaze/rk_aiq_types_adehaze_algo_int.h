@@ -44,6 +44,7 @@ typedef enum dehaze_api_mode_s {
 
 // dehaze v10
 typedef struct adehaze_sw_v10_s {
+    bool reserved;
 } adehaze_sw_v10_t;
 
 // dehaze v11
