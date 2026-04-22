@@ -19,7 +19,7 @@ scp target/armv7-unknown-linux-gnueabihf/release/examples/rk_enc root@<ip-addr>:
 Ssh into it and run the example:
 
 ``` sh
-./rk_enc
+./rk_vi_enc
 ```
 
 Now you can download saved stream and play it:
