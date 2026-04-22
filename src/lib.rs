@@ -6,6 +6,8 @@ use snafu::Snafu;
 
 #[cfg(feature = "aiq")]
 pub mod aiq;
+pub mod encoder;
+pub use encoder::{CameraEncoder, SimpleEncoder};
 pub mod mb;
 use mb::MemBufferPool;
 pub mod venc;
@@ -50,6 +52,8 @@ pub enum Error {
     MpiAlreadyInitialized,
     #[snafu(display("Invalid device id: {id}"))]
     InvalidDevId { id: u8 },
+    #[snafu(display("Invalid pipe id: {id}"))]
+    InvalidPipeId { id: u8 },
     #[snafu(display("Requested too many pipes: {num}"))]
     RequestedTooManyPipes { num: u8 },
     #[snafu(display("Invalid channel id: {id}"))]

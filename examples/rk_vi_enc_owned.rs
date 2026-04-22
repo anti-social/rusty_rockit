@@ -4,11 +4,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::RockitSys;
+use rusty_rockit::{CameraEncoder, RockitSys};
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
-    Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencChannelBindOwned, VencConfig
+    Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig
 };
+
+const DEFAULT_BITRATE: u32 = 4 * 1024;
+const GET_FRAME_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Test rockchip encoder
 #[derive(Debug, FromArgs)]
@@ -16,9 +19,18 @@ pub struct Args {
     /// camera id
     #[argh(option, short = 'c', default = "0")]
     camera_id: u8,
+    /// picture width
+    #[argh(option, short = 'w', default = "1920")]
+    width: u16,
+    /// picture height
+    #[argh(option, short = 'h', default = "1080")]
+    height: u16,
     /// logging system
     #[argh(option, short = 'e', default = "CodecKind::H264")]
     encoder: CodecKind,
+    /// bitrate (kbps)
+    #[argh(option, short = 'b', default = "DEFAULT_BITRATE")]
+    bitrate_kbps: u32,
     /// output file
     #[argh(option, short = 'o')]
     output_file: Option<PathBuf>,
@@ -30,63 +42,30 @@ enum CodecKind {
     Hevc,
 }
 
-struct CameraEncoder {
-    enc: VencChannelBindOwned,
-    frame: StreamFrame,
-}
-
-impl CameraEncoder {
-    fn new(
-        mpi: &RockitSys,
-        camera_id: u8,
-        codec: CodecKind,
-        width: u16,
-        height: u16,
-    ) -> Result<Self, rusty_rockit::Error> {
-        let codec = match codec {
-            CodecKind::H264 => Codec::H264 {
-                rate_control: H26xRateControl::Cbr {
-                    gop: 30,
-                    framerate: 30,
-                    bitrate_kbps: 4 * 1024,
-                },
-                profile: H264Profile::High,
+fn prepare_encoder_config(args: &Args) -> VencConfig {
+    let codec = match args.encoder {
+        CodecKind::H264 => Codec::H264 {
+            rate_control: H26xRateControl::Cbr {
+                gop: 30,
+                framerate: 30,
+                bitrate_kbps: args.bitrate_kbps,
             },
-            CodecKind::Hevc => Codec::Hevc {
-                rate_control: H26xRateControl::Cbr {
-                    gop: 30,
-                    framerate: 30,
-                    bitrate_kbps: 4 * 1024,
-                },
-                profile: HevcProfile::Main,
+            profile: H264Profile::High,
+        },
+        CodecKind::Hevc => Codec::Hevc {
+            rate_control: H26xRateControl::Cbr {
+                gop: 30,
+                framerate: 30,
+                bitrate_kbps: args.bitrate_kbps,
             },
-        };
-
-        let cam = mpi.camera(camera_id, 1).expect("Camera device").into_owned();
-
-        let pipe = cam.get_pipe(0).expect("Rockit pipe");
-        let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
-
-        let enc_channel = mpi.encoder(
-            0,
-            &VencConfig {
-                width,
-                height,
-                codec,
-                buf_count: 2,
-            }
-        )
-            .expect("Encoder channel")
-            .into_owned();
-        let enc_channel = enc_channel.start().expect("Encoder start");
-        let bind = enc_channel.bind(&channel).expect("Bind encoder");
-        let frame = StreamFrame::new();
-        Ok(Self { enc: bind, frame })
-    }
-
-    fn get_frame(&mut self) -> Result<&[u8], rusty_rockit::Error> {
-        let stream = self.enc.get_stream(&mut self.frame, Duration::from_millis(100))?;
-        stream.data()
+            profile: HevcProfile::Main,
+        },
+    };
+    VencConfig {
+        width: args.width,
+        height: args.height,
+        codec,
+        buf_count: 2,
     }
 }
 
@@ -96,9 +75,7 @@ fn main() {
     let args: Args = argh::from_env();
 
     let camera_id = args.camera_id;
-    let width = 1920;
-    let height = 1080;
-
+    let encoder_id = 0;
 
     let output_filename = args.output_file.as_deref()
         .unwrap_or_else(|| match args.encoder {
@@ -112,11 +89,13 @@ fn main() {
 
     log::info!("Creating MPI context...");
     let rockit_sys = RockitSys::init().expect("Rockit");
-    let mut encoder = CameraEncoder::new(&rockit_sys, camera_id, args.encoder, width, height)
-        .expect("Encoder");
+    let mut encoder = CameraEncoder::new(
+        &rockit_sys, args.camera_id, encoder_id, &prepare_encoder_config(&args)
+    )
+        .expect("Camera encoder");
     let mut file = File::create(output_filename).expect("Create file");
     for i in 0..30 {
-        let packet_data = encoder.get_frame().expect("Get frame");
+        let packet_data = encoder.get_frame(GET_FRAME_TIMEOUT).expect("Get frame");
         println!("{}: Packet len: {}", i + 1, packet_data.len());
 
         file.write_all(packet_data).expect("Write file");

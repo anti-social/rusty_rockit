@@ -1,18 +1,21 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::RockitSys;
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig};
+use rusty_rockit::{RockitSys, SimpleEncoder};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
+
+const DEFAULT_BITRATE: u32 = 4 * 1024;
+const ENCODE_FRAME_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Test rockchip encoder
 #[derive(Debug, FromArgs)]
 pub struct Args {
-    // /// input raw file
-    // #[argh(option, short = 'i')]
-    // input_file: PathBuf,
+    /// input raw file
+    #[argh(option, short = 'i')]
+    input_file: Option<PathBuf>,
     /// width
     #[argh(option, short = 'w')]
     width: u16,
@@ -20,18 +23,51 @@ pub struct Args {
     #[argh(option, short = 'h')]
     height: u16,
 
-    /// logging system
-    #[argh(option, short = 'e', default = "Encoder::H264")]
-    encoder: Encoder,
+    /// encoder
+    #[argh(option, short = 'e', default = "CodecKind::H264")]
+    encoder: CodecKind,
+    /// bitrate (kbps)
+    #[argh(option, short = 'b', default = "DEFAULT_BITRATE")]
+    bitrate_kbps: u32,
+    /// framerate
+    #[argh(option, short = 'r', default = "30")]
+    framerate: u8,
     /// output file
     #[argh(option, short = 'o')]
     output_file: Option<PathBuf>,
 }
 
 #[derive(Debug, FromArgValue)]
-enum Encoder {
+enum CodecKind {
     H264,
     Hevc,
+}
+
+fn prepare_encoder_config(args: &Args) -> VencConfig {
+    let codec = match args.encoder {
+        CodecKind::H264 => Codec::H264 {
+            rate_control: H26xRateControl::Cbr {
+                gop: 30,
+                framerate: args.framerate,
+                bitrate_kbps: args.bitrate_kbps,
+            },
+            profile: H264Profile::High,
+        },
+        CodecKind::Hevc => Codec::Hevc {
+            rate_control: H26xRateControl::Cbr {
+                gop: 30,
+                framerate: args.framerate,
+                bitrate_kbps: args.bitrate_kbps,
+            },
+            profile: HevcProfile::Main,
+        },
+    };
+    VencConfig {
+        width: args.width,
+        height: args.height,
+        codec,
+        buf_count: 2,
+    }
 }
 
 fn main() {
@@ -39,63 +75,48 @@ fn main() {
 
     let args: Args = argh::from_env();
 
-    let codec = match args.encoder {
-        Encoder::H264 => Codec::H264 {
-            rate_control: H26xRateControl::Cbr {
-                gop: 30,
-                framerate: 30,
-                bitrate_kbps: 4 * 1024,
-            },
-            profile: H264Profile::High,
-        },
-        Encoder::Hevc => Codec::Hevc {
-            rate_control: H26xRateControl::Cbr {
-                gop: 30,
-                framerate: 30,
-                bitrate_kbps: 4 * 1024,
-            },
-            profile: HevcProfile::Main,
-        },
-    };
-
     let output_filename = args.output_file.as_deref()
         .unwrap_or_else(|| match args.encoder {
-            Encoder::H264 => Path::new("test-enc.h264"),
-            Encoder::Hevc => Path::new("test-enc.hevc"),
+            CodecKind::H264 => Path::new("test-enc.h264"),
+            CodecKind::Hevc => Path::new("test-enc.hevc"),
         });
     let mut out_file = File::create(output_filename).expect("Create file");
         
     let rockit_sys = RockitSys::init().expect("Rockit");
 
-    let enc_channel = rockit_sys.encoder(
-        0,
-        &VencConfig {
-            width: args.width,
-            height: args.height,
-            codec,
-            buf_count: 2,
-        }
+    let encoder_id = 0;
+    let mut encoder = SimpleEncoder::new(
+        &rockit_sys, encoder_id, &prepare_encoder_config(&args)
     )
-        .expect("Encoder channel")
-        .into_owned();
-    let enc_channel = enc_channel.start().expect("Encoder start");
-    let buffer_pool = rockit_sys.pool()
-        .expect("Buffer pool")
-        .into_owned();
-    let buf_size = args.width as u32 * args.height as u32 * 3 / 2;
-    let mut mem_buffer = buffer_pool.get_buffer(buf_size).expect("Mem buffer");
-    let mut enc_frame = StreamFrame::new();
-    for i in 0..30 {
-        let data = mem_buffer.data_mut().expect("Buffer data");
-        data.fill(i * 8);
-        let mut frame = mem_buffer.new_frame(args.width, args.height);
-        enc_channel.send_frame(&mut frame, Duration::from_millis(100)).expect("Send frame");
+        .expect("Simple encoder");
+    let mut frame_buf = vec![0; encoder.frame_buf_size()];
 
-        let stream = enc_channel.get_stream(&mut enc_frame, Duration::from_millis(100))
-            .expect("Encoder stream");
-        let packet_data = stream.data().expect("Packet data");
-        println!("{}: Packet len: {}", i + 1, packet_data.len());
+    if let Some(input_file_path) = args.input_file {
+        let mut in_file = File::open(input_file_path).expect("Input file open");
+        loop {
+            match in_file.read_exact(&mut frame_buf) {
+                Ok(()) => {
+                    let packet_data = encoder.encode_frame(&frame_buf, ENCODE_FRAME_TIMEOUT)
+                        .expect("Encode frame");
+                    out_file.write_all(packet_data).expect("Write file");
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    break;
+                }
+                Err(e) => {
+                    panic!("Input file read: {e}");
+                }
+            }
+        }
+    } else {
+        // Just generate 30 frames
+        for i in 0..30 {
+            frame_buf.fill(i * 8);
+            let packet_data = encoder.encode_frame(&frame_buf, ENCODE_FRAME_TIMEOUT)
+                .expect("Encode frame");
+            println!("{}: Packet len: {}", i + 1, packet_data.len());
 
-        out_file.write_all(packet_data).expect("Write file");
+            out_file.write_all(packet_data).expect("Write file");
+        }
     }
 }
