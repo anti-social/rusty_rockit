@@ -490,11 +490,11 @@ impl VencChannelOwned<state::Started> {
     pub fn bind(&self, vi_channel: &ViChannelOwned) -> Result<VencChannelBindOwned, Error> {
         self.inner.bind(vi_channel.id(), vi_channel.pipe_id())
             .map(|inner| VencChannelBindOwned {
-                _mpi: self._mpi.clone(),
-                _camera: Rc::clone(&vi_channel.camera),
-                _vi_channel: Rc::clone(&vi_channel.inner),
-                venc_channel: Rc::clone(&self.inner),
                 _inner: Rc::new(inner),
+                venc_channel: Rc::clone(&self.inner),
+                _vi_channel: Rc::clone(&vi_channel.inner),
+                _camera: Rc::clone(&vi_channel.camera),
+                _mpi: self._mpi.clone(),
             })
     }
 
@@ -509,9 +509,9 @@ impl VencChannelOwned<state::Started> {
     ) -> Result<VencStreamOwned<'a>, Error> {
         self.inner.get_stream(frame, timeout)
             .map(|inner| VencStreamOwned {
-                _mpi: self._mpi.clone(),
+                inner,
                 _channel: Rc::clone(&self.inner),
-                inner,                
+                _mpi: self._mpi.clone(),
             })
     }
 }
