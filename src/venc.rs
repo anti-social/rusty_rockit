@@ -454,7 +454,7 @@ impl<'a> VencChannel<'a, state::Started> {
     pub fn stop(self) -> Result<VencChannel<'a, state::Initialized>, Error> {
         self.inner.stop()?;
         let mut inner = self.inner;
-        inner.state = Box::new(state::Started);
+        inner.state = Box::new(state::Initialized);
         Ok(VencChannel {
             inner,
             _mpi: self._mpi,
