@@ -95,7 +95,8 @@ fn main() {
         .expect("Camera encoder");
     let mut file = File::create(output_filename).expect("Create file");
     for i in 0..30 {
-        let packet_data = encoder.get_frame(GET_FRAME_TIMEOUT).expect("Get frame");
+        let stream = encoder.get_frame(GET_FRAME_TIMEOUT).expect("Get frame");
+        let packet_data = stream.data().expect("Packet data");
         println!("{}: Packet len: {}", i + 1, packet_data.len());
 
         file.write_all(packet_data).expect("Write file");

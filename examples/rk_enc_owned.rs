@@ -96,8 +96,9 @@ fn main() {
         loop {
             match in_file.read_exact(&mut frame_buf) {
                 Ok(()) => {
-                    let packet_data = encoder.encode_frame(&frame_buf, ENCODE_FRAME_TIMEOUT)
+                    let stream = encoder.encode_frame(&frame_buf, ENCODE_FRAME_TIMEOUT)
                         .expect("Encode frame");
+                    let packet_data = stream.data().expect("Packet data");
                     out_file.write_all(packet_data).expect("Write file");
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
@@ -112,8 +113,9 @@ fn main() {
         // Just generate 30 frames
         for i in 0..30 {
             frame_buf.fill(i * 8);
-            let packet_data = encoder.encode_frame(&frame_buf, ENCODE_FRAME_TIMEOUT)
+            let stream = encoder.encode_frame(&frame_buf, ENCODE_FRAME_TIMEOUT)
                 .expect("Encode frame");
+            let packet_data = stream.data().expect("Packet data");
             println!("{}: Packet len: {}", i + 1, packet_data.len());
 
             out_file.write_all(packet_data).expect("Write file");

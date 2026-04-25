@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::mb::MemBufferOwned;
 use crate::{Error, RockitSys};
-use crate::venc::{self, StreamFrame, VencChannelOwned, VencChannelBindOwned, VencConfig};
+use crate::venc::{self, StreamFrame, VencChannelOwned, VencChannelBindOwned, VencConfig, VencStreamOwned};
 
 
 pub struct SimpleEncoder {
@@ -40,14 +40,13 @@ impl SimpleEncoder {
     
     pub fn encode_frame(
         &mut self, frame_buf: &[u8], timeout: Duration
-    ) -> Result<&[u8], Error> {
+    ) -> Result<VencStreamOwned<'_>, Error> {
         let data = self.mem_buf.data_mut()?;
         data.copy_from_slice(frame_buf);
         let mut frame = self.mem_buf.new_frame(self.width, self.height);
         self.enc.send_frame(&mut frame, timeout)?;
 
-        let stream = self.enc.get_stream(&mut self.enc_frame, timeout)?;
-        stream.data()
+        self.enc.get_stream(&mut self.enc_frame, timeout)
     }
 }
 
@@ -81,8 +80,9 @@ impl CameraEncoder {
         Ok(Self { enc: bind, frame: StreamFrame::new() })
     }
 
-    pub fn get_frame(&mut self, timeout: Duration) -> Result<&[u8], Error> {
-        let stream = self.enc.get_stream(&mut self.frame, timeout)?;
-        stream.data()
+    pub fn get_frame(
+        &mut self, timeout: Duration
+    ) -> Result<VencStreamOwned<'_>, Error> {
+        self.enc.get_stream(&mut self.frame, timeout)
     }
 }
