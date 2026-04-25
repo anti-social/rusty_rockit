@@ -384,7 +384,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     u32MaxPicHeight: height,
                     u32VirWidth: width,
                     u32VirHeight: height,
-                    u32StreamBufCnt: 3,
+                    u32StreamBufCnt: cfg.buf_count as u32,
                     u32BufSize: width * height * 3 / 2,
                     bByFrame: false as u32,
                     enMirror: ffi::rkMIRROR_E_MIRROR_NONE,
