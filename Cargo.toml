@@ -15,7 +15,7 @@ mpi = ["rockit-sys/mpi"]
 aiq = ["rockit-sys/aiq"]
 
 [dependencies]
-env_logger = "0.11.10"
+env_logger = "0.11"
 log = "0.4"
 rockit-sys = { path = "rockit-sys" }
 snafu = "0.9"
