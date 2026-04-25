@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
 use rusty_rockit::RockitSys;
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig};
+use rusty_rockit::venc::{
+    Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, StreamFrame, VencConfig,
+};
 
 /// Test rockchip encoder
 #[derive(Debug, FromArgs)]
@@ -70,6 +72,7 @@ fn main() {
     let enc_channel = rockit_sys.encoder(
         0,
         &VencConfig {
+            pixel_format: PixelFormat::Nv12,
             width: args.width,
             height: args.height,
             codec,

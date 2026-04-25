@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
 use rusty_rockit::{RockitSys, SimpleEncoder};
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, VencConfig};
 
 const DEFAULT_BITRATE: u32 = 4 * 1024;
 const ENCODE_FRAME_TIMEOUT: Duration = Duration::from_millis(200);
@@ -63,6 +63,7 @@ fn prepare_encoder_config(args: &Args) -> VencConfig {
         },
     };
     VencConfig {
+        pixel_format: PixelFormat::Nv12,
         width: args.width,
         height: args.height,
         codec,

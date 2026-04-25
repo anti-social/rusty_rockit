@@ -7,7 +7,7 @@ use argh::{FromArgs, FromArgValue};
 use rusty_rockit::{CameraEncoder, RockitSys};
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
-    Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig
+    Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, VencConfig
 };
 
 const DEFAULT_BITRATE: u32 = 4 * 1024;
@@ -62,6 +62,7 @@ fn prepare_encoder_config(args: &Args) -> VencConfig {
         },
     };
     VencConfig {
+        pixel_format: PixelFormat::Nv12,
         width: args.width,
         height: args.height,
         codec,

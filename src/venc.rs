@@ -25,10 +25,28 @@ pub mod state {
 
 #[derive(Clone, Debug)]
 pub struct VencConfig {
+    pub pixel_format: PixelFormat,
     pub width: u16,
     pub height: u16,
     pub codec: Codec,
     pub buf_count: u8,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum PixelFormat {
+    Nv12,
+    Yuyv,
+}
+
+impl PixelFormat {
+    fn native_format(&self) -> ffi::rkPIXEL_FORMAT_E {
+        use PixelFormat::*;
+
+        match self {
+            Nv12 => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV420SP,
+            Yuyv => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV422_YVYU,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -376,7 +394,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
                 },
                 stVencAttr: ffi::rkVENC_ATTR_S {
                     enType: cfg.codec.native_id(),
-                    enPixelFormat: ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV420SP,
+                    enPixelFormat: cfg.pixel_format.native_format(),
                     u32Profile: cfg.codec.native_profile(),
                     u32PicWidth: width,
                     u32PicHeight: height,
