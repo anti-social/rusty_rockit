@@ -12,8 +12,30 @@ fn main() {
         println!("cargo::rustc-link-lib=rockchip_mpp");
         println!("cargo::rustc-link-lib=rga");
 
+        let mpi_headers = &[
+            "rk_debug.h",
+            "rk_defines.h",
+            "rk_mpi_adec.h",
+            "rk_mpi_aenc.h",
+            "rk_mpi_ai.h",
+            "rk_mpi_ao.h",
+            "rk_mpi_avs.h",
+            "rk_mpi_cal.h",
+            "rk_mpi_ivs.h",
+            "rk_mpi_mb.h",
+            "rk_mpi_rgn.h",
+            "rk_mpi_sys.h",
+            "rk_mpi_tde.h",
+            "rk_mpi_vdec.h",
+            "rk_mpi_venc.h",
+            "rk_mpi_vi.h",
+            "rk_mpi_vo.h",
+            "rk_mpi_vpss.h",
+        ];
         let mpi_bindings = bindgen::Builder::default()
-            .header("mpi.h")
+            .headers(
+                mpi_headers.map(|h| format!("vendor/rockit/include/{h}"))
+            )
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .clang_arg("-Ivendor/rockit/include")
             .generate()
@@ -28,8 +50,13 @@ fn main() {
         println!("cargo::rustc-link-search={pwd}/vendor/isp/lib");
         println!("cargo::rustc-link-lib=rkaiq");
 
+        let aiq_headers = &[
+            "rk_aiq_user_api2_sysctl.h",
+        ];
         let aiq_bindings = bindgen::Builder::default()
-            .header("aiq.h")
+            .headers(
+                aiq_headers.map(|h| format!("vendor/isp/include/rkaiq/uAPI2/{h}"))
+            )
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .blocklist_item("FP_NAN")
             .blocklist_item("FP_INFINITE")
