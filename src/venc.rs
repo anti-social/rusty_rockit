@@ -47,6 +47,15 @@ impl PixelFormat {
             Yuyv => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV422_YVYU,
         }
     }
+
+    fn bytes_per_pixel(&self) -> (u8, u8) {
+        use PixelFormat::*;
+
+        match self {
+            Nv12 => (3, 2),
+            Yuyv => (2, 1),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -380,6 +389,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
         let channel_id = channel_id as i32;
         let width = cfg.width as u32;
         let height = cfg.height as u32;
+        let bytes_per_pixel = cfg.pixel_format.bytes_per_pixel();
         unsafe {
             let channel_attr = ffi::rkVENC_CHN_ATTR_S {
                 stRcAttr: ffi::rkVENC_RC_ATTR_S {
@@ -403,7 +413,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     u32VirWidth: width,
                     u32VirHeight: height,
                     u32StreamBufCnt: cfg.buf_count as u32,
-                    u32BufSize: width * height * 3 / 2,
+                    u32BufSize: width * height * bytes_per_pixel.0 as u32 / bytes_per_pixel.1 as u32,
                     bByFrame: false as u32,
                     enMirror: ffi::rkMIRROR_E_MIRROR_NONE,
                     __bindgen_anon_1: ffi::rkVENC_ATTR_S__bindgen_ty_1 {
