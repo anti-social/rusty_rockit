@@ -595,7 +595,7 @@ impl<'a> Drop for VencStreamInner<'a> {
 }
 
 impl<'a> VencStreamInner<'a> {
-    pub fn data(&self) -> Result<&'a [u8], Error> {
+    pub fn data(&self) -> Result<&[u8], Error> {
         let data = unsafe {
             let packet = *self.frame.frame.pstPack;
             let data_ptr = ffi::RK_MPI_MB_Handle2VirAddr(packet.pMbBlk);
@@ -618,7 +618,7 @@ pub struct VencStreamOwned<'a> {
 }
 
 impl<'a> VencStreamOwned<'a> {
-    pub fn data(&self) -> Result<&'a [u8], Error> {
+    pub fn data(&self) -> Result<&[u8], Error> {
         self.inner.data()
     }
 }
@@ -629,7 +629,7 @@ pub struct VencStream<'a, 'b> {
 }
 
 impl<'a, 'b> VencStream<'a, 'b> {
-    pub fn data(&self) -> Result<&'b [u8], Error> {
+    pub fn data(&self) -> Result<&[u8], Error> {
         self.inner.data()
     }
 }
