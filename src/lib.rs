@@ -14,6 +14,8 @@ pub mod venc;
 use venc::{VencChannel, VencConfig};
 pub mod vi;
 use vi::Camera;
+use vpss::{VpssGroupConfig, VpssGroup};
+pub mod vpss;
 
 const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
 const RK_ERR_APPID: u32 = 0x80000000 + 0x20000000;
@@ -119,9 +121,15 @@ impl RockitSys {
     }
 
     pub fn pool<'a>(
-        &'a self
+        &'a self, buf_size: u32
     ) -> Result<MemBufferPool<'a>, Error> {
-        MemBufferPool::new(self)
+        MemBufferPool::new(self, buf_size)
+    }
+
+    pub fn vpss_group<'a>(
+        &'a self, id: u8, cfg: &VpssGroupConfig
+    ) -> Result<VpssGroup<'a, vpss::state::Initialized>, Error> {
+        VpssGroup::<vpss::state::Initialized>::new(self, id, cfg)
     }
 }
 
@@ -160,6 +168,35 @@ impl Drop for ChannelBind {
                 ),
                 "Error unbinding channels"
             );
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum PixelFormat {
+    Nv12,
+    Yuyv,
+    Rgb24,
+}
+
+impl PixelFormat {
+    fn native_format(&self) -> ffi::rkPIXEL_FORMAT_E {
+        use PixelFormat::*;
+
+        match self {
+            Nv12 => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV420SP,
+            Yuyv => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV422_YUYV,
+            Rgb24 => ffi::rkPIXEL_FORMAT_E_RK_FMT_RGB888,
+        }
+    }
+
+    pub fn bytes_per_pixel(&self) -> (u8, u8) {
+        use PixelFormat::*;
+
+        match self {
+            Nv12 => (3, 2),
+            Yuyv => (2, 1),
+            Rgb24 => (3, 1),
         }
     }
 }

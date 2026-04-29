@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::{RockitSys, SimpleEncoder};
-use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, VencConfig};
+use rusty_rockit::{RockitSys, PixelFormat, SimpleEncoder};
+use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
 
 const DEFAULT_BITRATE: u32 = 4 * 1024;
 const ENCODE_FRAME_TIMEOUT: Duration = Duration::from_millis(200);

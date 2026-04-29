@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::RockitSys;
+use rusty_rockit::{PixelFormat, RockitSys};
 use rusty_rockit::venc::{
-    Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, StreamFrame, VencConfig,
+    Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig,
 };
 
 /// Test rockchip encoder
@@ -69,25 +69,26 @@ fn main() {
         
     let rockit_sys = RockitSys::init().expect("Rockit");
 
+    let venc_config = VencConfig {
+        pixel_format: PixelFormat::Nv12,
+        width: args.width,
+        height: args.height,
+        codec,
+        buf_count: 2,
+    };
     let enc_channel = rockit_sys.encoder(
-        0,
-        &VencConfig {
-            pixel_format: PixelFormat::Nv12,
-            width: args.width,
-            height: args.height,
-            codec,
-            buf_count: 2,
-        }
+        0, &venc_config
     ).expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");
-    let buffer_pool = rockit_sys.pool().expect("Buffer pool");
+    let buffer_pool = rockit_sys.pool(venc_config.calc_buffer_size())
+            .expect("Buffer pool");
     let buf_size = args.width as u32 * args.height as u32 * 3 / 2;
     let mut mem_buffer = buffer_pool.get_buffer(buf_size).expect("Mem buffer");
     {
         let data = mem_buffer.data_mut().expect("Buffer data");
         data.fill(128);
     }
-    let mut frame = mem_buffer.new_frame(args.width, args.height);
+    let mut frame = mem_buffer.new_frame(PixelFormat::Nv12, args.width, args.height);
     let mut enc_frame = StreamFrame::new();
     for i in 0..30 {
         enc_channel.send_frame(&mut frame, Duration::from_millis(100)).expect("Send frame");

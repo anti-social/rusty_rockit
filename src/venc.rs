@@ -1,15 +1,18 @@
 use core::slice;
-use std::any::Any; 
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
 
-use crate::ChannelBind;
+use crate::vpss::VpssChannelOwned;
+use crate::{ChannelBind, PixelFormat};
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
 use crate::{Error, RockitSys, rk_check_err, rk_log_err};
 use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
+use crate::vpss::{self, VpssGroupInner, VpssChannelInner};
 
 #[allow(non_camel_case_types)]
 type rkVENC_H265_CBR_S = ffi::rkVENC_H264_CBR_S;
@@ -20,7 +23,14 @@ type rkVENC_H265_AVBR_S = ffi::rkVENC_H264_AVBR_S;
 
 pub mod state {
     pub struct Initialized;
+    impl Initialized {
+        pub(super) const VALUE: u8 = 0;
+    }
+
     pub struct Started;
+    impl Started {
+        pub(super) const VALUE: u8 = 1;
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -32,29 +42,11 @@ pub struct VencConfig {
     pub buf_count: u8,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum PixelFormat {
-    Nv12,
-    Yuyv,
-}
-
-impl PixelFormat {
-    fn native_format(&self) -> ffi::rkPIXEL_FORMAT_E {
-        use PixelFormat::*;
-
-        match self {
-            Nv12 => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV420SP,
-            Yuyv => ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV422_YVYU,
-        }
-    }
-
-    fn bytes_per_pixel(&self) -> (u8, u8) {
-        use PixelFormat::*;
-
-        match self {
-            Nv12 => (3, 2),
-            Yuyv => (2, 1),
-        }
+impl VencConfig {
+    pub fn calc_buffer_size(&self) -> u32 {
+        let bytes_per_pixel = self.pixel_format.bytes_per_pixel();
+        self.width as u32 * self.height as u32 *
+            bytes_per_pixel.0 as u32 / bytes_per_pixel.1 as u32
     }
 }
 
@@ -76,6 +68,29 @@ impl Codec {
         match self {
             Self::H264 { .. } => ffi::rkCODEC_ID_E_RK_VIDEO_ID_AVC,
             Self::Hevc { .. } => ffi::rkCODEC_ID_E_RK_VIDEO_ID_HEVC,
+        }
+    }
+
+    pub fn framerate(&self) -> u8 {
+        match self {
+            Self::H264 { rate_control: H26xRateControl::Cbr { framerate, .. }, .. } => {
+                *framerate
+            }
+            Self::H264 { rate_control: H26xRateControl::Vbr { framerate, .. }, .. } => {
+                *framerate
+            }
+            Self::H264 { rate_control: H26xRateControl::Avbr { framerate, .. }, .. } => {
+                *framerate
+            }
+            Self::Hevc { rate_control: H26xRateControl::Cbr { framerate, .. }, .. } => {
+                *framerate
+            }
+            Self::Hevc { rate_control: H26xRateControl::Vbr { framerate, .. }, .. } => {
+                *framerate
+            }
+            Self::Hevc { rate_control: H26xRateControl::Avbr { framerate, .. }, .. } => {
+                *framerate
+            }
         }
     }
 
@@ -278,11 +293,11 @@ pub enum HevcProfile {
 
 struct VencChannelInner {
     id: i32,
-    state: Box<dyn Any>,
+    state: Arc<AtomicU8>,
 }
 
 impl VencChannelInner {
-    pub fn start(&mut self) -> Result<(), Error> {
+    pub fn start(&self) -> Result<(), Error> {
         unsafe {
             let recv_param = ffi::rkVENC_RECV_PIC_PARAM_S {
                 s32RecvPicNum: -1,
@@ -291,27 +306,30 @@ impl VencChannelInner {
                 ffi::RK_MPI_VENC_StartRecvFrame(self.id, &recv_param as *const _)
             );
         }
-        self.state = Box::new(state::Started);
+        self.state.store(state::Started::VALUE, Ordering::Relaxed);
         Ok(())
     }
     
     fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping encoder: {}", self.id);
-        if !self.state.is::<state::Started>() {
+        if self.state.load(Ordering::Relaxed) != state::Started::VALUE {
             return Ok(());
         }
         unsafe {
             rk_check_err!(ffi::RK_MPI_VENC_StopRecvFrame(self.id));
         }
+        self.state.store(state::Initialized::VALUE, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn bind(&self, vi_channel_id: i32, vi_pipe_id: i32) -> Result<ChannelBind, Error> {
+    fn bind(
+        &self, module: ffi::rkMOD_ID_E, src_channel_id: i32, src_pipe_id: i32
+    ) -> Result<ChannelBind, Error> {
         let bind = unsafe {
             let src_channel = ffi::rkMPP_CHN_S {
-                enModId: ffi::rkMOD_ID_E_RK_ID_VI,
-                s32DevId: vi_pipe_id,
-                s32ChnId: vi_channel_id,
+                enModId: module,
+                s32DevId: src_pipe_id,
+                s32ChnId: src_channel_id,
             };
             let dst_channel = ffi::rkMPP_CHN_S {
                 enModId: ffi::rkMOD_ID_E_RK_ID_VENC,
@@ -389,7 +407,6 @@ impl<'a> VencChannel<'a, state::Initialized> {
         let channel_id = channel_id as i32;
         let width = cfg.width as u32;
         let height = cfg.height as u32;
-        let bytes_per_pixel = cfg.pixel_format.bytes_per_pixel();
         unsafe {
             let channel_attr = ffi::rkVENC_CHN_ATTR_S {
                 stRcAttr: ffi::rkVENC_RC_ATTR_S {
@@ -413,7 +430,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     u32VirWidth: width,
                     u32VirHeight: height,
                     u32StreamBufCnt: cfg.buf_count as u32,
-                    u32BufSize: width * height * bytes_per_pixel.0 as u32 / bytes_per_pixel.1 as u32,
+                    u32BufSize: cfg.calc_buffer_size(),
                     bByFrame: false as u32,
                     enMirror: ffi::rkMIRROR_E_MIRROR_NONE,
                     __bindgen_anon_1: ffi::rkVENC_ATTR_S__bindgen_ty_1 {
@@ -431,14 +448,14 @@ impl<'a> VencChannel<'a, state::Initialized> {
         Ok(Self {
             inner: VencChannelInner {
                 id: channel_id,
-                state: Box::new(state::Initialized),
+                state: Arc::new(AtomicU8::new(state::Initialized::VALUE)),
             },
             _mpi: mpi,
             _marker: PhantomData,
         })
     }
 
-    pub fn start(mut self) -> Result<VencChannel<'a, state::Started>, Error> {
+    pub fn start(self) -> Result<VencChannel<'a, state::Started>, Error> {
         self.inner.start()?;
         Ok(VencChannel {
             inner: self.inner,
@@ -449,8 +466,8 @@ impl<'a> VencChannel<'a, state::Initialized> {
 
     pub fn into_owned(self) -> VencChannelOwned<state::Initialized> {
         VencChannelOwned {
-            _mpi: self._mpi.clone(),
             inner: Rc::new(self.inner),
+            _mpi: self._mpi.clone(),
             _marker: self._marker,
         }
     }
@@ -458,7 +475,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
 
 impl<'a> VencChannel<'a, state::Started> {
     pub fn bind(&'a self, vi_channel: &'a ViChannel) -> Result<VencChannelBind<'a>, Error> {
-        self.inner.bind(vi_channel.id(), vi_channel.pipe_id())
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.id(), vi_channel.pipe_id())
             .map(|inner| VencChannelBind {
                 _inner: inner,
                 venc_channel: self,
@@ -481,10 +498,8 @@ impl<'a> VencChannel<'a, state::Started> {
 
     pub fn stop(self) -> Result<VencChannel<'a, state::Initialized>, Error> {
         self.inner.stop()?;
-        let mut inner = self.inner;
-        inner.state = Box::new(state::Initialized);
         Ok(VencChannel {
-            inner,
+            inner: self.inner,
             _mpi: self._mpi,
             _marker: PhantomData,
         })
@@ -504,8 +519,8 @@ impl<S> VencChannelOwned<S> {
 }
 
 impl VencChannelOwned<state::Initialized> {
-    pub fn start(mut self) -> Result<VencChannelOwned<state::Started>, Error> {
-        Rc::get_mut(&mut self.inner).unwrap().start()?;
+    pub fn start(self) -> Result<VencChannelOwned<state::Started>, Error> {
+        self.inner.start()?;
         Ok(VencChannelOwned {
             _mpi: self._mpi.clone(),
             inner: self.inner,
@@ -516,12 +531,25 @@ impl VencChannelOwned<state::Initialized> {
 
 impl VencChannelOwned<state::Started> {
     pub fn bind(&self, vi_channel: &ViChannelOwned) -> Result<VencChannelBindOwned, Error> {
-        self.inner.bind(vi_channel.id(), vi_channel.pipe_id())
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.id(), vi_channel.pipe_id())
             .map(|inner| VencChannelBindOwned {
                 _inner: Rc::new(inner),
                 venc_channel: Rc::clone(&self.inner),
                 _vi_channel: Rc::clone(&vi_channel.inner),
                 _camera: Rc::clone(&vi_channel.camera),
+                _mpi: self._mpi.clone(),
+            })
+    }
+
+    pub fn bind_vpss(
+        &self, vpss_channel: &VpssChannelOwned<vpss::channel_state::Enabled>
+    ) -> Result<VpssVencBindOwned, Error> {
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VPSS, vpss_channel.id(), 0)
+            .map(|inner| VpssVencBindOwned {
+                _inner: Rc::new(inner),
+                venc_channel: Rc::clone(&self.inner),
+                _vpss_channel: Rc::clone(&vpss_channel.inner),
+                vpss_group: Rc::clone(&vpss_channel.group),
                 _mpi: self._mpi.clone(),
             })
     }
@@ -561,6 +589,33 @@ impl VencChannelBindOwned {
                 _mpi: self._mpi.clone(),
                 _channel: Rc::clone(&self.venc_channel),
                 inner,                
+            })
+    }
+}
+
+pub struct VpssVencBindOwned {
+    _inner: Rc<ChannelBind>,
+    venc_channel: Rc<VencChannelInner>,
+    _vpss_channel: Rc<VpssChannelInner>,
+    vpss_group: Rc<VpssGroupInner>,
+    _mpi: RockitSys,
+}
+
+impl VpssVencBindOwned {
+    pub fn send_frame(
+        &self, pipe_id: u8, frame: &mut MbFrameOwned, timeout: Duration
+    ) -> Result<(), Error> {
+        self.vpss_group.send_frame(pipe_id as i32, &mut frame.inner, timeout)
+    }
+
+    pub fn get_stream<'a>(
+        &self, frame: &'a mut StreamFrame, timeout: Duration
+    ) -> Result<VencStreamOwned<'a>, Error> {
+        self.venc_channel.get_stream(frame, timeout)
+            .map(|inner| VencStreamOwned {
+                _mpi: self._mpi.clone(),
+                _channel: Rc::clone(&self.venc_channel),
+                inner,
             })
     }
 }

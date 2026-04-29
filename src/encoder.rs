@@ -1,14 +1,20 @@
 use std::time::Duration;
 
-use crate::mb::MemBufferOwned;
-use crate::{Error, RockitSys};
-use crate::venc::{self, StreamFrame, VencChannelOwned, VencChannelBindOwned, VencConfig, VencStreamOwned};
+use crate::vpss::{FrameRateControl, VpssChannelConfig, VpssGroupConfig};
+use crate::{Error, PixelFormat, RockitSys};
+use crate::mb::MemBufferPoolOwned;
+use crate::venc::{
+    self, StreamFrame, VencChannelBindOwned, VencChannelOwned, VencConfig, VencStreamOwned,
+    VpssVencBindOwned,
+};
 
 
 pub struct SimpleEncoder {
     enc: VencChannelOwned<venc::state::Started>,
+    vpss_venc_bind: Option<VpssVencBindOwned>,
     enc_frame: StreamFrame,
-    mem_buf: MemBufferOwned,
+    buffer_pool: MemBufferPoolOwned,
+    pixel_format: PixelFormat,
     width: u16,
     height: u16,
     frame_buf_size: usize,
@@ -18,19 +24,60 @@ impl SimpleEncoder {
     pub fn new(
         mpi: &RockitSys, encoder_id: u8, config: &VencConfig
     ) -> Result<Self, Error> {
-        let enc_channel = mpi.encoder(encoder_id, config)?.into_owned();
+        let buffer_size = config.calc_buffer_size();
+        log::debug!("Input buffer size: {buffer_size}");
+
+        let pixel_format = config.pixel_format;
+        let mut config = config.clone();
+        config.pixel_format = PixelFormat::Nv12;
+
+        let enc_channel = mpi.encoder(encoder_id, &config)?.into_owned();
         let enc_channel = enc_channel.start()?;
-        let buffer_pool = mpi.pool()?.into_owned();
-        let frame_buf_size = config.width as u32 * config.height as u32 * 3 / 2;
-        let mem_buf = buffer_pool.get_buffer(frame_buf_size)?;
+
+        let buffer_pool = mpi.pool(buffer_size)?.into_owned();
+
+        let vpss_venc_bind = if !matches!(pixel_format, PixelFormat::Nv12) {
+            let vpss_config = VpssGroupConfig {
+                pixel_format: pixel_format,
+                max_width: config.width,
+                max_height: config.height,
+                frame_rate: FrameRateControl {
+                    src: config.codec.framerate(),
+                    dst: config.codec.framerate(),
+                },
+            };
+            let vpss_group = mpi.vpss_group(0, &vpss_config)?.into_owned();
+            let vpss_channel_config = VpssChannelConfig {
+                pixel_format: PixelFormat::Nv12,
+                width: config.width,
+                height: config.height,
+                frame_rate: FrameRateControl {
+                    src: config.codec.framerate(),
+                    dst: config.codec.framerate(),
+                },
+                mirror: false,
+                flip: false,
+                queue_size: 0,
+                frame_buffer_count: 2,
+            };
+            let vpss_group = vpss_group.start()?;
+            let vpss_channel = vpss_group.set_channel(0, &vpss_channel_config)?;
+            let vpss_channel = vpss_channel.enable()?;
+            Some(enc_channel.bind_vpss(&vpss_channel)?)
+        } else {
+            None
+        };
 
         Ok(Self {
+            pixel_format,
             enc: enc_channel,
+            vpss_venc_bind,
             enc_frame: StreamFrame::new(),
-            mem_buf,
+            buffer_pool,
+            // mem_buf,
             width: config.width,
             height: config.height,
-            frame_buf_size: frame_buf_size as usize,
+            frame_buf_size: buffer_size as usize,
         })
     }
 
@@ -41,10 +88,17 @@ impl SimpleEncoder {
     pub fn encode_frame(
         &mut self, frame_buf: &[u8], timeout: Duration
     ) -> Result<VencStreamOwned<'_>, Error> {
-        let data = self.mem_buf.data_mut()?;
+        let mut mem_buf = self.buffer_pool.get_buffer(self.frame_buf_size as u32)?;
+        let data = mem_buf.data_mut()?;
         data.copy_from_slice(frame_buf);
-        let mut frame = self.mem_buf.new_frame(self.width, self.height);
-        self.enc.send_frame(&mut frame, timeout)?;
+        let mut frame = mem_buf.new_frame(
+            self.pixel_format, self.width, self.height
+        );
+        if let Some(ref vpss_venc_bind) = self.vpss_venc_bind {
+            vpss_venc_bind.send_frame(0, &mut frame, timeout)?;
+        } else {
+            self.enc.send_frame(&mut frame, timeout)?;
+        }
 
         self.enc.get_stream(&mut self.enc_frame, timeout)
     }

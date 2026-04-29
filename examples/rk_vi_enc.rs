@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::RockitSys;
+use rusty_rockit::{PixelFormat, RockitSys};
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
-    Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, StreamFrame, VencConfig
+    Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig
 };
 
 /// Test rockchip encoder

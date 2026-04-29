@@ -75,9 +75,9 @@ impl<'a> Camera<'a> {
 
             let mut pipe = ffi::rkVI_DEV_BIND_PIPE_S {
                 u32Num: num_pipes as u32,
-                PipeId: [0; 16usize],
+                PipeId: [0; ffi::MAX_VI_BIND_PIPE_NUM as usize],
                 bDataOffline: 0,
-                bUserStartPipe: [0; 16],
+                bUserStartPipe: [0; ffi::MAX_VI_BIND_PIPE_NUM as usize],
             };
             rk_check_err!(ffi::RK_MPI_VI_SetDevBindPipe(dev_id, &mut pipe as *mut _));
 

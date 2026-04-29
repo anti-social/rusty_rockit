@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::{CameraEncoder, RockitSys};
+use rusty_rockit::{CameraEncoder, PixelFormat, RockitSys};
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
-    Codec, H26xRateControl, H264Profile, HevcProfile, PixelFormat, VencConfig
+    Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig
 };
 
 const DEFAULT_BITRATE: u32 = 4 * 1024;

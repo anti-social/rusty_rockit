@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use std::ptr;
 use std::rc::Rc;
 
-use crate::{Error, ffi, rk_log_err, RockitSys};
+use crate::{Error, PixelFormat, RockitSys, ffi, rk_log_err};
 
 struct MemBufferPoolInner {
     id: u32,
@@ -39,10 +39,11 @@ pub struct MemBufferPool<'a> {
 }
 
 impl<'a> MemBufferPool<'a> {
-    pub(crate) fn new(mpi: &'a RockitSys) -> Result<MemBufferPool<'a>, Error> {
-        const MB_INVALID_POOLID: u32 = ffi::MB_INVALID_POOLID as u32;
+    const MB_INVALID_POOLID: u32 = ffi::MB_INVALID_POOLID as u32;
 
-        let buf_size = 1920 * 1080 * 3 / 2;
+    pub(crate) fn new(
+        mpi: &'a RockitSys, buf_size: u32,
+    ) -> Result<MemBufferPool<'a>, Error> {
         let mut pool_config = ffi::rkMB_POOL_CONFIG_S {
             bNotDelete: false as u32,
             bPreAlloc: true as u32,
@@ -50,13 +51,13 @@ impl<'a> MemBufferPool<'a> {
             enRemapMode: ffi::rkMB_REMAP_MODE_E_MB_REMAP_MODE_NONE,
             enDmaType: ffi::rkMB_DMA_TYPE_E_MB_DMA_TYPE_NONE,
             u32MBCnt: 1,
-            u64MBSize: buf_size,
+            u64MBSize: buf_size as u64,
         };
 
         let pool_id = unsafe {
             ffi::RK_MPI_MB_CreatePool(&mut pool_config as *mut _)
         };
-        if pool_id == MB_INVALID_POOLID {
+        if pool_id == Self::MB_INVALID_POOLID {
             return Err(Error::CreatePool);
         }
 
@@ -96,9 +97,9 @@ impl MemBufferPoolOwned {
     pub fn get_buffer(&self, size: u32) -> Result<MemBufferOwned, Error> {
         self.inner.get_buffer(size)
             .map(|inner| MemBufferOwned {
-                _mpi: self._mpi.clone(),
+                inner: inner,
                 _pool: Rc::clone(&self.inner),
-                inner: Rc::new(inner),
+                _mpi: self._mpi.clone(),
             })
     }
 }
@@ -165,16 +166,18 @@ impl<'a> MemBuffer<'a> {
         self.inner.data_mut()
     }
 
-    pub fn new_frame(&self, width: u16, height: u16) -> MbFrame<'_> {
+    pub fn new_frame(
+        &self, pixel_format: PixelFormat, width: u16, height: u16
+    ) -> MbFrame<'_> {
         MbFrame {
             _buf: self,
-            inner: MbFrameInner::new(&self.inner, width, height),
+            inner: MbFrameInner::new(&self.inner, pixel_format, width, height),
         }
     }
 }
 
 pub struct MemBufferOwned {
-    inner: Rc<MemBufferInner>,
+    inner: MemBufferInner,
     _pool: Rc<MemBufferPoolInner>,
     _mpi: RockitSys,
 }
@@ -185,15 +188,17 @@ impl MemBufferOwned {
     }
 
     pub fn data_mut(&mut self) -> Result<&mut [u8], Error> {
-        Rc::get_mut(&mut self.inner).unwrap().data_mut()
+        self.inner.data_mut()
     }
 
-    pub fn new_frame(&self, width: u16, height: u16) -> MbFrameOwned<'_> {
+    pub fn new_frame(
+        &self, pixel_format: PixelFormat, width: u16, height: u16
+    ) -> MbFrameOwned<'_> {
         MbFrameOwned {
             _mpi: self._mpi.clone(),
             _pool: Rc::clone(&self._pool),
             _buf: &self.inner,
-            inner: MbFrameInner::new(&self.inner, width, height),
+            inner: MbFrameInner::new(&self.inner, pixel_format, width, height),
         }
     }
 }
@@ -203,7 +208,9 @@ pub(crate) struct MbFrameInner {
 }
 
 impl MbFrameInner {
-    fn new(buf: &MemBufferInner, width: u16, height: u16) -> MbFrameInner {
+    fn new(
+        buf: &MemBufferInner, pixel_format: PixelFormat, width: u16, height: u16
+    ) -> MbFrameInner {
         let width = width as u32;
         let height = height as u32;
         let frame = ffi::rkVIDEO_FRAME_INFO_S {
@@ -214,7 +221,7 @@ impl MbFrameInner {
                 u32VirWidth: width,
                 u32VirHeight: height,
                 enField: ffi::rkVIDEO_FIELD_E_VIDEO_FIELD_FRAME,
-                enPixelFormat: ffi::rkPIXEL_FORMAT_E_RK_FMT_YUV420SP,
+                enPixelFormat: pixel_format.native_format(),
                 enVideoFormat: ffi::rkVIDEO_FORMAT_E_VIDEO_FORMAT_LINEAR,
                 enCompressMode: ffi::rkCOMPRESS_MODE_E_COMPRESS_MODE_NONE,
                 enDynamicRange: ffi::rkDYNAMIC_RANGE_E_DYNAMIC_RANGE_SDR8,
