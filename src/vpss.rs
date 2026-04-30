@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::slice;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
@@ -53,7 +52,7 @@ pub mod state {
 
 pub struct VpssGroupInner {
     id: i32,
-    state: Arc<AtomicU8>,
+    state: AtomicU8,
     channels: VpssChannelResourceManager,
     _resource: VpssGroupAcquired,
 }
@@ -99,7 +98,7 @@ impl VpssGroupInner {
         }
         Ok(Self {
             id,
-            state: Arc::new(AtomicU8::new(state::Runtime::Initialized as u8)),
+            state: AtomicU8::new(state::Runtime::Initialized as u8),
             channels: ResourceManager::new(format!("vpss_channel:{id}")),
             _resource: resource,
         })
@@ -257,7 +256,7 @@ pub mod channel_state {
 pub(crate) struct VpssChannelInner {
     id: i32,
     group_id: i32,
-    state: Arc<AtomicU8>,
+    state: AtomicU8,
     _resource: VpssChannelAcquired,
 }
 
@@ -313,7 +312,7 @@ impl VpssChannelInner {
         Ok(VpssChannelInner {
             id: channel_id,
             group_id: group_id,
-            state: Arc::new(AtomicU8::new(channel_state::Runtime::Disabed as _)),
+            state: AtomicU8::new(channel_state::Runtime::Disabed as _),
             _resource: resource,
         })
     }

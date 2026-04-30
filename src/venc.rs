@@ -2,7 +2,6 @@ use core::slice;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
@@ -296,7 +295,7 @@ pub enum HevcProfile {
 
 struct VencChannelInner {
     id: i32,
-    state: Arc<AtomicU8>,
+    state: AtomicU8,
     _resource: VencChannelAcquired,
 }
 
@@ -451,7 +450,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
         Ok(Self {
             inner: VencChannelInner {
                 id: channel_id,
-                state: Arc::new(AtomicU8::new(state::Initialized::VALUE)),
+                state: AtomicU8::new(state::Initialized::VALUE),
                 _resource: mpi.venc_channels.acqure()?,
             },
             _mpi: mpi,
