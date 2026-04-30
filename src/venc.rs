@@ -8,7 +8,7 @@ use std::time::Duration;
 use rockit_sys::mpi as ffi;
 
 use crate::vpss::VpssChannelOwned;
-use crate::{ChannelBind, PixelFormat};
+use crate::{AcquiredResource, ChannelBind, PixelFormat, ResourceManager};
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
 use crate::{Error, RockitSys, rk_check_err, rk_log_err};
 use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
@@ -20,6 +20,9 @@ type rkVENC_H265_CBR_S = ffi::rkVENC_H264_CBR_S;
 type rkVENC_H265_VBR_S = ffi::rkVENC_H264_VBR_S;
 #[allow(non_camel_case_types)]
 type rkVENC_H265_AVBR_S = ffi::rkVENC_H264_AVBR_S;
+
+pub(crate) type VencChannelResourceManager = ResourceManager<{ ffi::VENC_MAX_CHN_NUM as usize }>;
+pub(crate) type VencChannelAcquired = AcquiredResource<{ ffi::VENC_MAX_CHN_NUM as usize }>;
 
 pub mod state {
     pub struct Initialized;
@@ -294,6 +297,22 @@ pub enum HevcProfile {
 struct VencChannelInner {
     id: i32,
     state: Arc<AtomicU8>,
+    _resource: VencChannelAcquired,
+}
+
+impl Drop for VencChannelInner {
+    fn drop(&mut self) {
+        if let Err(e) = self.stop() {
+            log::error!("Error stopping encoder: {e}");
+        }
+        log::debug!("Dropping encoder in state: {}", self.id);
+        unsafe {
+            rk_log_err!(
+                ffi::RK_MPI_VENC_DestroyChn(self.id),
+                "Error destroying encoder channel"
+            );
+        }
+    }
 }
 
 impl VencChannelInner {
@@ -373,21 +392,6 @@ impl VencChannelInner {
     }
 }
 
-impl Drop for VencChannelInner {
-    fn drop(&mut self) {
-        if let Err(e) = self.stop() {
-            log::error!("Error stopping encoder: {e}");
-        }
-        log::debug!("Dropping encoder in state: {}", self.id);
-        unsafe {
-            rk_log_err!(
-                ffi::RK_MPI_VENC_DestroyChn(self.id),
-                "Error destroying encoder channel"
-            );
-        }
-    }
-}
-
 pub struct VencChannel<'a, S> {
     inner: VencChannelInner,
     _mpi: &'a RockitSys,
@@ -402,9 +406,8 @@ impl<'a, S> VencChannel<'a, S> {
 
 impl<'a> VencChannel<'a, state::Initialized> {
     pub fn new(
-        mpi: &'a RockitSys, channel_id: u8, cfg: &VencConfig
+        mpi: &'a RockitSys, channel_id: i32, cfg: &VencConfig
     ) -> Result<VencChannel<'a, state::Initialized>, Error> {
-        let channel_id = channel_id as i32;
         let width = cfg.width as u32;
         let height = cfg.height as u32;
         unsafe {
@@ -449,6 +452,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
             inner: VencChannelInner {
                 id: channel_id,
                 state: Arc::new(AtomicU8::new(state::Initialized::VALUE)),
+                _resource: mpi.venc_channels.acqure()?,
             },
             _mpi: mpi,
             _marker: PhantomData,

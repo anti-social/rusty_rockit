@@ -75,8 +75,7 @@ fn main() {
 
     let args: Args = argh::from_env();
 
-    let camera_id = args.camera_id;
-    let encoder_id = 0;
+    let camera_id = args.camera_id.try_into().expect("Camera id");
 
     let output_filename = args.output_file.as_deref()
         .unwrap_or_else(|| match args.encoder {
@@ -91,7 +90,7 @@ fn main() {
     log::info!("Creating MPI context...");
     let rockit_sys = RockitSys::init().expect("Rockit");
     let mut encoder = CameraEncoder::new(
-        &rockit_sys, args.camera_id, encoder_id, &prepare_encoder_config(&args)
+        &rockit_sys, camera_id, &prepare_encoder_config(&args)
     )
         .expect("Camera encoder");
     let mut file = File::create(output_filename).expect("Create file");

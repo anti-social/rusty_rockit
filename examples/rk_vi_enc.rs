@@ -35,7 +35,7 @@ fn main() {
 
     let args: Args = argh::from_env();
 
-    let camera_id = args.camera_id;
+    let camera_id = args.camera_id.try_into().expect("Camera id");
     let width = 1920;
     let height = 1080;
 
@@ -76,8 +76,7 @@ fn main() {
     let pipe = cam.get_pipe(0).expect("Rockit pipe");
     let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
 
-    let enc_channel = rockit_sys.encoder(
-        0,
+    let enc_channel = rockit_sys.venc_channel(
         &VencConfig {
             pixel_format: PixelFormat::Nv12,
             width,

@@ -76,12 +76,11 @@ fn main() {
         codec,
         buf_count: 2,
     };
-    let enc_channel = rockit_sys.encoder(
-        0, &venc_config
-    ).expect("Encoder channel");
+    let enc_channel = rockit_sys.venc_channel(&venc_config)
+        .expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");
     let buffer_pool = rockit_sys.pool(venc_config.calc_buffer_size())
-            .expect("Buffer pool");
+        .expect("Buffer pool");
     let buf_size = args.width as u32 * args.height as u32 * 3 / 2;
     let mut mem_buffer = buffer_pool.get_buffer(buf_size).expect("Mem buffer");
     {

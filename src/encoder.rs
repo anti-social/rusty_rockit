@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::vi::CameraId;
 use crate::vpss::{FrameRateControl, VpssChannelConfig, VpssGroupConfig};
 use crate::{Error, PixelFormat, RockitSys};
 use crate::mb::MemBufferPoolOwned;
@@ -22,7 +23,7 @@ pub struct SimpleEncoder {
 
 impl SimpleEncoder {
     pub fn new(
-        mpi: &RockitSys, encoder_id: u8, config: &VencConfig
+        mpi: &RockitSys, config: &VencConfig
     ) -> Result<Self, Error> {
         let buffer_size = config.calc_buffer_size();
         log::debug!("Input buffer size: {buffer_size}");
@@ -31,7 +32,7 @@ impl SimpleEncoder {
         let mut config = config.clone();
         config.pixel_format = PixelFormat::Nv12;
 
-        let enc_channel = mpi.encoder(encoder_id, &config)?.into_owned();
+        let enc_channel = mpi.venc_channel(&config)?.into_owned();
         let enc_channel = enc_channel.start()?;
 
         let buffer_pool = mpi.pool(buffer_size)?.into_owned();
@@ -46,7 +47,7 @@ impl SimpleEncoder {
                     dst: config.codec.framerate(),
                 },
             };
-            let vpss_group = mpi.vpss_group(0, &vpss_config)?.into_owned();
+            let vpss_group = mpi.vpss_group(&vpss_config)?.into_owned();
             let vpss_channel_config = VpssChannelConfig {
                 pixel_format: PixelFormat::Nv12,
                 width: config.width,
@@ -61,7 +62,7 @@ impl SimpleEncoder {
                 frame_buffer_count: 2,
             };
             let vpss_group = vpss_group.start()?;
-            let vpss_channel = vpss_group.set_channel(0, &vpss_channel_config)?;
+            let vpss_channel = vpss_group.channel(&vpss_channel_config)?;
             let vpss_channel = vpss_channel.enable()?;
             Some(enc_channel.bind_vpss(&vpss_channel)?)
         } else {
@@ -112,14 +113,13 @@ pub struct CameraEncoder {
 impl CameraEncoder {
     pub fn new(
         mpi: &RockitSys,
-        camera_id: u8,
-        encoder_id: u8,
+        camera_id: CameraId,
         config: &VencConfig,
     ) -> Result<Self, Error> {
         let pipe_id = 0;
         let camera_channel_id = 0;
 
-        let cam = mpi.camera(camera_id, camera_id)?.into_owned();
+        let cam = mpi.camera(camera_id, 1)?.into_owned();
 
         let pipe = cam.get_pipe(pipe_id)
             .ok_or(Error::InvalidPipeId { id: pipe_id })?;
@@ -127,7 +127,7 @@ impl CameraEncoder {
             camera_channel_id, config.width, config.height
         )?;
 
-        let enc_channel = mpi.encoder(encoder_id, &config)?.into_owned();
+        let enc_channel = mpi.venc_channel(&config)?.into_owned();
         let enc_channel = enc_channel.start()?;
         let bind = enc_channel.bind(&channel)?;
 

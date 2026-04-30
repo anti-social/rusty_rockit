@@ -26,7 +26,7 @@ fn run() -> Result<(), rusty_rockit::Error>{
             dst: 30,
         },
     };
-    let vpss_group = mpi.vpss_group(255, &vpss_config)?;
+    let vpss_group = mpi.vpss_group(&vpss_config)?;
     let vpss_channel_config = VpssChannelConfig {
         pixel_format: output_pixel_format,
         width: width,
@@ -41,7 +41,7 @@ fn run() -> Result<(), rusty_rockit::Error>{
         frame_buffer_count: 2, 
     };
     let vpss_group = vpss_group.start()?;
-    let vpss_channel = vpss_group.set_channel(0, &vpss_channel_config)?;
+    let vpss_channel = vpss_group.channel(&vpss_channel_config)?;
     let vpss_channel = vpss_channel.enable()?;
 
     let bytes_per_pixel = vpss_config.pixel_format.bytes_per_pixel();

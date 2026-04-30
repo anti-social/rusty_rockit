@@ -1,13 +1,18 @@
-use core::marker::PhantomData;
-use core::slice;
-use core::sync::atomic::{AtomicU8, Ordering};
+use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::rc::Rc;
+use std::slice;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
-use crate::{Error, PixelFormat, RockitSys, ffi, rk_check_err, rk_log_err};
+use crate::{AcquiredResource, Error, PixelFormat, ResourceManager, RockitSys, ffi, rk_check_err, rk_log_err};
+
+pub(crate) type VpssGroupResourceManager = ResourceManager<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
+pub(crate) type VpssGroupAcquired = AcquiredResource<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
+pub(crate) type VpssChannelResourceManager = ResourceManager<{ ffi::VPSS_MAX_CHN_NUM as usize }>;
+pub(crate) type VpssChannelAcquired = AcquiredResource<{ ffi::VPSS_MAX_CHN_NUM as usize }>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VpssGroupConfig {
@@ -49,6 +54,8 @@ pub mod state {
 pub struct VpssGroupInner {
     id: i32,
     state: Arc<AtomicU8>,
+    channels: VpssChannelResourceManager,
+    _resource: VpssGroupAcquired,
 }
 
 impl Drop for VpssGroupInner {
@@ -73,7 +80,9 @@ impl Drop for VpssGroupInner {
 }
 
 impl VpssGroupInner {
-    fn new(id: i32, cfg: &VpssGroupConfig) -> Result<Self, Error> {
+    fn new(
+        resource: VpssGroupAcquired, id: i32, cfg: &VpssGroupConfig
+    ) -> Result<Self, Error> {
         unsafe {
             let attrs = ffi::rkVPSS_GRP_ATTR_S {
                 u32MaxW: cfg.max_width as _,
@@ -89,52 +98,18 @@ impl VpssGroupInner {
             rk_check_err!(ffi::RK_MPI_VPSS_CreateGrp(id, &attrs as *const _));
         }
         Ok(Self {
-            id, state: Arc::new(AtomicU8::new(state::Runtime::Initialized as u8)),
+            id,
+            state: Arc::new(AtomicU8::new(state::Runtime::Initialized as u8)),
+            channels: ResourceManager::new(format!("vpss_channel:{id}")),
+            _resource: resource,
         })
     }
 
-    fn set_channel(
-        &self, channel_id: i32, cfg: &VpssChannelConfig
+    fn channel(
+        &self, cfg: &VpssChannelConfig
     ) -> Result<VpssChannelInner, Error> {
-        unsafe {
-            let channel_attrs = ffi::rkVPSS_CHN_ATTR_S {
-                enChnMode: ffi::rkVPSS_CHN_MODE_E_VPSS_CHN_MODE_USER,
-                u32Width: cfg.width as _,
-                u32Height: cfg.height as _,
-                enVideoFormat: ffi::rkVIDEO_FORMAT_E_VIDEO_FORMAT_LINEAR,
-                enPixelFormat: cfg.pixel_format.native_format(),
-                enDynamicRange: ffi::rkDYNAMIC_RANGE_E_DYNAMIC_RANGE_SDR8,
-                enCompressMode: ffi::rkCOMPRESS_MODE_E_COMPRESS_MODE_NONE,
-                stFrameRate: ffi::rkFRAME_RATE_CTRL_S {
-                    s32SrcFrameRate: -1,
-                    s32DstFrameRate: -1,
-                },
-                bMirror: cfg.mirror as _,
-                bFlip: cfg.flip as _,
-                u32Depth: cfg.queue_size as _,
-                stAspectRatio: ffi::rkASPECT_RATIO_S {
-                    enMode: ffi::rkASPECT_RATIO_E_ASPECT_RATIO_NONE,
-                    u32BgColor: 0,
-                    stVideoRect: ffi::rkRECT_S {
-                        s32X: 0,
-                        s32Y: 0,
-                        u32Width: 0,
-                        u32Height: 0,
-                        // u32Width: cfg.width as _,
-                        // u32Height: cfg.height as _,
-                    }
-                },
-                u32FrameBufCnt: cfg.frame_buffer_count as _,
-            };
-            rk_check_err!(
-                ffi::RK_MPI_VPSS_SetChnAttr(self.id, channel_id, &channel_attrs as *const _)
-            );
-        }
-        Ok(VpssChannelInner {
-            id: channel_id,
-            group_id: self.id,
-            state: Arc::new(AtomicU8::new(channel_state::Runtime::Disabed as _)),
-        })
+        let channel = self.channels.acqure()?;
+        VpssChannelInner::new(channel, self.id, cfg)
     }
     
     fn start(&self) -> Result<(), Error> {
@@ -174,10 +149,10 @@ impl<'a, S> VpssGroup<'a, S> {
         self.inner.id
     }
 
-    pub fn set_channel(
-        &'a self, channel_id: u8, cfg: &VpssChannelConfig
+    pub fn channel(
+        &'a self, cfg: &VpssChannelConfig
     ) -> Result<VpssChannel<'a, channel_state::Disabled>, Error> {
-        self.inner.set_channel(channel_id as i32, cfg)
+        self.inner.channel(cfg)
             .map(|inner| VpssChannel {
                 inner,
                 group: &self.inner,
@@ -189,9 +164,9 @@ impl<'a, S> VpssGroup<'a, S> {
 
 impl<'a> VpssGroup<'a, state::Initialized> {
     pub(crate) fn new(
-        mpi: &'a RockitSys, id: u8, cfg: &VpssGroupConfig
+        mpi: &'a RockitSys, id: i32, cfg: &VpssGroupConfig
     ) -> Result<VpssGroup<'a, state::Initialized>, Error> {
-        VpssGroupInner::new(id as i32, cfg)
+        VpssGroupInner::new(mpi.vpss_groups.acqure()?, id, cfg)
             .map(|inner| VpssGroup {
                 inner: inner,
                 _mpi: mpi,
@@ -236,10 +211,10 @@ impl<S> VpssGroupOwned<S> {
         self.inner.id
     }
 
-    pub fn set_channel(
-        &self, channel_id: u8, cfg: &VpssChannelConfig
+    pub fn channel(
+        &self, cfg: &VpssChannelConfig
     ) -> Result<VpssChannelOwned<channel_state::Disabled>, Error> {
-        self.inner.set_channel(channel_id as i32, cfg)
+        self.inner.channel(cfg)
             .map(|inner| VpssChannelOwned {
                 inner: Rc::new(inner),
                 group: Rc::clone(&self.inner),
@@ -283,6 +258,7 @@ pub(crate) struct VpssChannelInner {
     id: i32,
     group_id: i32,
     state: Arc<AtomicU8>,
+    _resource: VpssChannelAcquired,
 }
 
 impl Drop for VpssChannelInner {
@@ -296,6 +272,52 @@ impl Drop for VpssChannelInner {
 }
 
 impl VpssChannelInner {
+    fn new(
+        resource: VpssChannelAcquired,
+        group_id: i32,
+        cfg: &VpssChannelConfig,
+    ) -> Result<Self, Error> {
+        let channel_id = resource.id as i32;
+        unsafe {
+            let channel_attrs = ffi::rkVPSS_CHN_ATTR_S {
+                enChnMode: ffi::rkVPSS_CHN_MODE_E_VPSS_CHN_MODE_USER,
+                u32Width: cfg.width as _,
+                u32Height: cfg.height as _,
+                enVideoFormat: ffi::rkVIDEO_FORMAT_E_VIDEO_FORMAT_LINEAR,
+                enPixelFormat: cfg.pixel_format.native_format(),
+                enDynamicRange: ffi::rkDYNAMIC_RANGE_E_DYNAMIC_RANGE_SDR8,
+                enCompressMode: ffi::rkCOMPRESS_MODE_E_COMPRESS_MODE_NONE,
+                stFrameRate: ffi::rkFRAME_RATE_CTRL_S {
+                    s32SrcFrameRate: -1,
+                    s32DstFrameRate: -1,
+                },
+                bMirror: cfg.mirror as _,
+                bFlip: cfg.flip as _,
+                u32Depth: cfg.queue_size as _,
+                stAspectRatio: ffi::rkASPECT_RATIO_S {
+                    enMode: ffi::rkASPECT_RATIO_E_ASPECT_RATIO_NONE,
+                    u32BgColor: 0,
+                    stVideoRect: ffi::rkRECT_S {
+                        s32X: 0,
+                        s32Y: 0,
+                        u32Width: 0,
+                        u32Height: 0,
+                    }
+                },
+                u32FrameBufCnt: cfg.frame_buffer_count as _,
+            };
+            rk_check_err!(
+                ffi::RK_MPI_VPSS_SetChnAttr(group_id, channel_id, &channel_attrs as *const _)
+            );
+        }
+        Ok(VpssChannelInner {
+            id: channel_id,
+            group_id: group_id,
+            state: Arc::new(AtomicU8::new(channel_state::Runtime::Disabed as _)),
+            _resource: resource,
+        })
+    }
+    
     fn enable(&self) -> Result<(), Error> {
         log::debug!(
             "Enabling VPSS channel: group = {}, channel = {}", self.group_id, self.id

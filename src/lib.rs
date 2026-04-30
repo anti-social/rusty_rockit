@@ -1,5 +1,6 @@
 use std::cell::OnceCell;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use rockit_sys::mpi as ffi;
 use snafu::Snafu;
@@ -11,10 +12,10 @@ pub use encoder::{CameraEncoder, SimpleEncoder};
 pub mod mb;
 use mb::MemBufferPool;
 pub mod venc;
-use venc::{VencChannel, VencConfig};
+use venc::{VencChannel, VencChannelResourceManager, VencConfig};
 pub mod vi;
-use vi::Camera;
-use vpss::{VpssGroupConfig, VpssGroup};
+use vi::{Camera, CameraId, ViCameraResourceManager};
+use vpss::{VpssGroup, VpssGroupConfig, VpssGroupResourceManager};
 pub mod vpss;
 
 const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
@@ -52,6 +53,10 @@ impl RockitErr {
 pub enum Error {
     #[snafu(display("MPI is already initialized"))]
     MpiAlreadyInitialized,
+    #[snafu(display("Resource unavailable {name}: {id:?}"))]
+    ResourceUnavailable { name: String, id: Option<usize> },
+    #[snafu(display("Invalid camera id: {id}"))]
+    InvalidCameraId { id: u8 },
     #[snafu(display("Invalid device id: {id}"))]
     InvalidDevId { id: u8 },
     #[snafu(display("Invalid pipe id: {id}"))]
@@ -66,6 +71,8 @@ pub enum Error {
     CreatePool,
     #[snafu(display("Cannot get buffer"))]
     GetBuffer,
+    #[snafu(display("MPI lock is poisoned"))]
+    LockPoisoned,
     #[snafu(display("Rockit error code: {err:?}"))]
     Rockit { err: RockitErr }
 }
@@ -91,8 +98,71 @@ macro_rules! rk_log_err {
 }
 
 #[derive(Clone)]
+pub(crate) struct ResourceManager<const N: usize> {
+    name: String,
+    state: Arc<Mutex<[AtomicBool; N]>>,
+}
+
+impl<const N: usize> ResourceManager<N> {
+    pub(crate) fn new(name: String) -> Self {
+        Self {
+            name: name.to_string(),
+            state: Arc::new(Mutex::new([const { AtomicBool::new(false) }; N])),
+        }
+    }
+
+    pub(crate) fn acqure(&self) -> Result<AcquiredResource<N>, Error> {
+        let slots = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        for (id, slot) in slots.iter().enumerate() {
+            if slot.load(Ordering::Relaxed) {
+                continue;
+            }
+            slot.store(true, Ordering::Relaxed);
+            return Ok(AcquiredResource { id, resource: self.clone() });
+        }
+        Err(Error::ResourceUnavailable { name: self.name.clone(), id: None })
+    }
+
+    pub(crate) fn acqure_specific(&self, id: usize) -> Result<AcquiredResource<N>, Error> {
+        let slot = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if slot[id].load(Ordering::Relaxed) {
+            return Err(Error::ResourceUnavailable { name: self.name.clone(), id: Some(id) });
+        }
+        slot[id].store(true, Ordering::Relaxed);
+        Ok(AcquiredResource { id, resource: self.clone() })
+    }
+    
+    pub(crate) fn release(&self, id: usize) -> Result<(), Error> {
+        let slots = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        slots[id].store(false, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct AcquiredResource<const N: usize> {
+    id: usize,
+    resource: ResourceManager<N>,
+}
+
+impl<const N: usize> Drop for AcquiredResource<N> {
+    fn drop(&mut self) {
+        log::debug!("Releasing resource {}: {}", self.resource.name, self.id);
+        if let Err(e) = self.resource.release(self.id) {
+            log::error!(
+                "Error releasing resource [name {}, id = {}]: {e}",
+                self.resource.name, self.id
+            );
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct RockitSys {
     _inner: Arc<RockitSysInner>,
+    pub(crate) cameras: ViCameraResourceManager,
+    pub(crate) venc_channels: VencChannelResourceManager,
+    pub(crate) vpss_groups: VpssGroupResourceManager,
 }
 
 impl RockitSys {
@@ -105,19 +175,25 @@ impl RockitSys {
             rk_check_err!(ffi::RK_MPI_SYS_Init());
         }
         let _ = mpi_sys_init.set(());
-        Ok(Self { _inner: Arc::new(RockitSysInner) })
+        Ok(Self {
+            _inner: Arc::new(RockitSysInner),
+            cameras: ResourceManager::new("camera".to_string()),
+            venc_channels: ResourceManager::new("venc_channel".to_string()),
+            vpss_groups: ResourceManager::new("vpss_group".to_string()),
+        })
     }
 
     pub fn camera<'a>(
-        &'a self, dev_id: u8, num_pipes: u8
+        &'a self, camera_id: CameraId, num_pipes: u8
     ) -> Result<Camera<'a>, Error> {
-        Camera::new(self, dev_id, num_pipes)
+        Camera::new(self, camera_id as u8, num_pipes)
     }
 
-    pub fn encoder<'a>(
-        &'a self, channel_id: u8, cfg: &VencConfig
+    pub fn venc_channel<'a>(
+        &'a self, cfg: &VencConfig
     ) -> Result<VencChannel<'a, venc::state::Initialized>, Error> {
-        VencChannel::new(self, channel_id, cfg)
+        let channel = self.venc_channels.acqure()?;
+        VencChannel::new(self, channel.id as i32, cfg)
     }
 
     pub fn pool<'a>(
@@ -127,9 +203,10 @@ impl RockitSys {
     }
 
     pub fn vpss_group<'a>(
-        &'a self, id: u8, cfg: &VpssGroupConfig
+        &'a self, cfg: &VpssGroupConfig
     ) -> Result<VpssGroup<'a, vpss::state::Initialized>, Error> {
-        VpssGroup::<vpss::state::Initialized>::new(self, id, cfg)
+        let group = self.venc_channels.acqure()?;
+        VpssGroup::<vpss::state::Initialized>::new(self, group.id as i32, cfg)
     }
 }
 

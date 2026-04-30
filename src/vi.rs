@@ -5,17 +5,46 @@ use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
 
-use crate::{Error, rk_check_err, rk_log_err, RK_SUCCESS, RK_ERR_VI_NOT_CONFIG, RockitSys};
+use crate::{
+    AcquiredResource, Error, RK_ERR_VI_NOT_CONFIG, RK_SUCCESS, ResourceManager, RockitSys,
+    rk_check_err, rk_log_err,
+};
+
+pub(crate) type ViCameraResourceManager = ResourceManager<{ ffi::VI_MAX_DEV_NUM as usize }>;
+pub(crate) type ViCameraAcquired = AcquiredResource<{ ffi::VI_MAX_DEV_NUM as usize }>;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default)]
+pub enum CameraId {
+    #[default]
+    Zero = 0,
+    One = 1,
+    Two = 2,
+}
+
+impl TryFrom<u8> for CameraId {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Zero,
+            1 => Self::One,
+            2 => Self::Two,
+            _ => return Err(Error::InvalidCameraId { id: value }),
+        })
+    }
+}
 
 pub(crate) struct CameraInner {
     _dev: ffi::rkVI_DEV_ATTR_S,
     id: i32,
     pipe: ffi::rkVI_DEV_BIND_PIPE_S,
+    _resource: ViCameraAcquired,
 }
 
 impl Drop for CameraInner {
     fn drop(&mut self) {
-        log::debug!("Disable camera device");
+        log::debug!("Disabling camera device");
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_DisableDev(self.id),
@@ -86,7 +115,12 @@ impl<'a> Camera<'a> {
 
         Ok(Self {
             _mpi: mpi,
-            inner: CameraInner { id: dev_id, _dev: dev, pipe },
+            inner: CameraInner {
+                id: dev_id,
+                _dev: dev,
+                pipe,
+                _resource: mpi.cameras.acqure_specific(dev_id as usize)?,
+            },
         })
     }
 

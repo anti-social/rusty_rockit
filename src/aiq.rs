@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 pub use rockit_sys::aiq as ffi;
 use snafu::{OptionExt, Snafu};
 
+use crate::vi::CameraId;
+
 #[derive(Clone, Debug, Snafu)]
 pub enum Error {
     #[snafu(display("AIQ error code: {code}"))]
@@ -29,12 +31,12 @@ pub struct AiqContext<S> {
 
 impl AiqContext<state::Initialized> {
     pub fn init(
-        cam_id: u8, iq_files: Option<&Path>
+        camera_id: CameraId, iq_files: Option<&Path>
     ) -> Result<AiqContext<state::Initialized>, Error> {
         let ctx = unsafe {
             let mut aiq_static_info = MaybeUninit::zeroed();
             let res = ffi::rk_aiq_uapi2_sysctl_enumStaticMetas(
-                cam_id as i32,
+                camera_id as u8 as i32,
                 aiq_static_info.as_mut_ptr(),
             );
             if res != ffi::XCamReturn_XCAM_RETURN_NO_ERROR {

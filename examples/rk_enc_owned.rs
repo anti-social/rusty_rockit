@@ -85,9 +85,8 @@ fn main() {
         
     let rockit_sys = RockitSys::init().expect("Rockit");
 
-    let encoder_id = 0;
     let mut encoder = SimpleEncoder::new(
-        &rockit_sys, encoder_id, &prepare_encoder_config(&args)
+        &rockit_sys, &prepare_encoder_config(&args)
     )
         .expect("Simple encoder");
     let mut frame_buf = vec![0; encoder.frame_buf_size()];
