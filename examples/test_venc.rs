@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::{PixelFormat, RockitSys};
+use rusty_rockit::{PixelFormat, RockitMpi};
 use rusty_rockit::venc::{
     Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig,
 };
@@ -67,7 +67,7 @@ fn main() {
         });
     let mut out_file = File::create(output_filename).expect("Create file");
         
-    let rockit_sys = RockitSys::init().expect("Rockit");
+    let rockit_sys = RockitMpi::init().expect("Rockit");
 
     let venc_config = VencConfig {
         pixel_format: PixelFormat::Nv12,

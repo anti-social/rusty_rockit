@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::{PixelFormat, RockitSys};
+use rusty_rockit::{PixelFormat, RockitMpi};
 use rusty_rockit::aiq::AiqContext;
 use rusty_rockit::venc::{
     Codec, H26xRateControl, H264Profile, HevcProfile, StreamFrame, VencConfig
@@ -69,7 +69,7 @@ fn main() {
     let _aiq_ctx = aiq_ctx.start().expect("AIQ start");
 
     log::info!("Creating MPI context...");
-    let rockit_sys = RockitSys::init().expect("Rockit");
+    let rockit_sys = RockitMpi::init().expect("Rockit");
 
     let cam = rockit_sys.camera(camera_id, 1).expect("Camera device");
 

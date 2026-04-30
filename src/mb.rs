@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use std::ptr;
 use std::rc::Rc;
 
-use crate::{Error, PixelFormat, RockitSys, ffi, rk_log_err};
+use crate::{Error, PixelFormat, RockitMpi, ffi, rk_log_err};
 
 struct MemBufferPoolInner {
     id: u32,
@@ -35,14 +35,14 @@ impl MemBufferPoolInner {
 
 pub struct MemBufferPool<'a> {
     inner: MemBufferPoolInner,
-    _mpi: &'a RockitSys,
+    _mpi: &'a RockitMpi,
 }
 
 impl<'a> MemBufferPool<'a> {
     const MB_INVALID_POOLID: u32 = ffi::MB_INVALID_POOLID as u32;
 
     pub(crate) fn new(
-        mpi: &'a RockitSys, buf_size: u32,
+        mpi: &'a RockitMpi, buf_size: u32,
     ) -> Result<MemBufferPool<'a>, Error> {
         let mut pool_config = ffi::rkMB_POOL_CONFIG_S {
             bNotDelete: false as u32,
@@ -86,7 +86,7 @@ impl<'a> MemBufferPool<'a> {
 
 pub struct MemBufferPoolOwned {
     inner: Rc<MemBufferPoolInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl MemBufferPoolOwned {
@@ -179,7 +179,7 @@ impl<'a> MemBuffer<'a> {
 pub struct MemBufferOwned {
     inner: MemBufferInner,
     _pool: Rc<MemBufferPoolInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl MemBufferOwned {
@@ -254,5 +254,5 @@ pub struct MbFrameOwned<'a> {
     pub(crate) inner: MbFrameInner,
     _buf: &'a MemBufferInner,
     _pool: Rc<MemBufferPoolInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }

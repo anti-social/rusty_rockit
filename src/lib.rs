@@ -158,14 +158,14 @@ impl<const N: usize> Drop for AcquiredResource<N> {
 }
 
 #[derive(Clone)]
-pub struct RockitSys {
+pub struct RockitMpi {
     _inner: Arc<RockitSysInner>,
     pub(crate) cameras: ViCameraResourceManager,
     pub(crate) venc_channels: VencChannelResourceManager,
     pub(crate) vpss_groups: VpssGroupResourceManager,
 }
 
-impl RockitSys {
+impl RockitMpi {
     pub fn init() -> Result<Self, Error> {
         let mpi_sys_init = MPI_SYS_INIT.lock().unwrap();
         if mpi_sys_init.get().is_some() {

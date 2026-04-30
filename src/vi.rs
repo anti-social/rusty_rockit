@@ -6,7 +6,7 @@ use std::time::Duration;
 use rockit_sys::mpi as ffi;
 
 use crate::{
-    AcquiredResource, Error, RK_ERR_VI_NOT_CONFIG, RK_SUCCESS, ResourceManager, RockitSys,
+    AcquiredResource, Error, RK_ERR_VI_NOT_CONFIG, RK_SUCCESS, ResourceManager, RockitMpi,
     rk_check_err, rk_log_err,
 };
 
@@ -56,7 +56,7 @@ impl Drop for CameraInner {
 
 pub struct CameraOwned {
     inner: Rc<CameraInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl CameraOwned {
@@ -74,12 +74,12 @@ impl CameraOwned {
 
 pub struct Camera<'a> {
     inner: CameraInner,
-    _mpi: &'a RockitSys,
+    _mpi: &'a RockitMpi,
 }
 
 impl<'a> Camera<'a> {
     pub(crate) fn new(
-        mpi: &'a RockitSys,
+        mpi: &'a RockitMpi,
         dev_id: u8,
         num_pipes: u8, 
     ) -> Result<Self, Error> {
@@ -147,7 +147,7 @@ pub struct ViPipe<'a> {
 pub struct ViPipeOwned {
     id: i32,
     camera: Rc<CameraInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl ViPipeOwned {
@@ -283,7 +283,7 @@ impl ViChannelInner {
 pub struct ViChannelOwned {
     pub(crate) inner: Rc<ViChannelInner>,
     pub(crate) camera: Rc<CameraInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl ViChannelOwned {
@@ -386,7 +386,7 @@ pub struct ViFrameOwned {
     inner: ViFrameInner,
     _channel: Rc<ViChannelInner>,
     _camera: Rc<CameraInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl ViFrameOwned {

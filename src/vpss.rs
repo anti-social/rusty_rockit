@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
-use crate::{AcquiredResource, Error, PixelFormat, ResourceManager, RockitSys, ffi, rk_check_err, rk_log_err};
+use crate::{AcquiredResource, Error, PixelFormat, ResourceManager, RockitMpi, ffi, rk_check_err, rk_log_err};
 
 pub(crate) type VpssGroupResourceManager = ResourceManager<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
 pub(crate) type VpssGroupAcquired = AcquiredResource<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
@@ -139,7 +139,7 @@ impl VpssGroupInner {
 
 pub struct VpssGroup<'a, S> {
     inner: VpssGroupInner,
-    _mpi: &'a RockitSys,
+    _mpi: &'a RockitMpi,
     _marker: PhantomData<S>,
 }
 
@@ -163,7 +163,7 @@ impl<'a, S> VpssGroup<'a, S> {
 
 impl<'a> VpssGroup<'a, state::Initialized> {
     pub(crate) fn new(
-        mpi: &'a RockitSys, id: i32, cfg: &VpssGroupConfig
+        mpi: &'a RockitMpi, id: i32, cfg: &VpssGroupConfig
     ) -> Result<VpssGroup<'a, state::Initialized>, Error> {
         VpssGroupInner::new(mpi.vpss_groups.acqure()?, id, cfg)
             .map(|inner| VpssGroup {
@@ -201,7 +201,7 @@ impl<'a> VpssGroup<'a, state::Started> {
 
 pub struct VpssGroupOwned<S> {
     inner: Rc<VpssGroupInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
     _marker: PhantomData<S>,
 }
 
@@ -371,7 +371,7 @@ impl VpssChannelInner {
 pub struct VpssChannel<'a, S> {
     pub(crate) inner: VpssChannelInner,
     pub(crate) group: &'a VpssGroupInner,
-    _mpi: &'a RockitSys,
+    _mpi: &'a RockitMpi,
     _marker: PhantomData<S>,
 }
 
@@ -418,7 +418,7 @@ impl<'a> VpssChannel<'a, channel_state::Enabled> {
 pub struct VpssChannelOwned<S> {
     pub(crate) inner: Rc<VpssChannelInner>,
     pub(crate) group: Rc<VpssGroupInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
     _marker: PhantomData<S>,
 }
 
@@ -505,7 +505,7 @@ pub struct VpssFrame<'a> {
     inner: VpssFrameInner,
     _channel: &'a VpssChannelInner,
     _group: &'a VpssGroupInner,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl<'a> VpssFrame<'a> {
@@ -526,7 +526,7 @@ pub struct VpssFrameOwned {
     inner: VpssFrameInner,
     _channel: Rc<VpssChannelInner>,
     _group: Rc<VpssGroupInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl VpssFrameOwned {

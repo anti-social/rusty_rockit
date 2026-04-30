@@ -9,7 +9,7 @@ use rockit_sys::mpi as ffi;
 use crate::vpss::VpssChannelOwned;
 use crate::{AcquiredResource, ChannelBind, PixelFormat, ResourceManager};
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
-use crate::{Error, RockitSys, rk_check_err, rk_log_err};
+use crate::{Error, RockitMpi, rk_check_err, rk_log_err};
 use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
 use crate::vpss::{self, VpssGroupInner, VpssChannelInner};
 
@@ -393,7 +393,7 @@ impl VencChannelInner {
 
 pub struct VencChannel<'a, S> {
     inner: VencChannelInner,
-    _mpi: &'a RockitSys,
+    _mpi: &'a RockitMpi,
     _marker: PhantomData<S>,
 }
 
@@ -405,7 +405,7 @@ impl<'a, S> VencChannel<'a, S> {
 
 impl<'a> VencChannel<'a, state::Initialized> {
     pub fn new(
-        mpi: &'a RockitSys, channel_id: i32, cfg: &VencConfig
+        mpi: &'a RockitMpi, channel_id: i32, cfg: &VencConfig
     ) -> Result<VencChannel<'a, state::Initialized>, Error> {
         let width = cfg.width as u32;
         let height = cfg.height as u32;
@@ -511,7 +511,7 @@ impl<'a> VencChannel<'a, state::Started> {
 
 pub struct VencChannelOwned<S> {
     inner: Rc<VencChannelInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
     _marker: PhantomData<S>,
 }
 
@@ -580,7 +580,7 @@ pub struct VencChannelBindOwned {
     venc_channel: Rc<VencChannelInner>,
     _vi_channel: Rc<ViChannelInner>,
     _camera: Rc<CameraInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl VencChannelBindOwned {
@@ -601,7 +601,7 @@ pub struct VpssVencBindOwned {
     venc_channel: Rc<VencChannelInner>,
     _vpss_channel: Rc<VpssChannelInner>,
     vpss_group: Rc<VpssGroupInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl VpssVencBindOwned {
@@ -699,7 +699,7 @@ impl<'a> VencStreamInner<'a> {
 pub struct VencStreamOwned<'a> {
     inner: VencStreamInner<'a>,
     _channel: Rc<VencChannelInner>,
-    _mpi: RockitSys,
+    _mpi: RockitMpi,
 }
 
 impl<'a> VencStreamOwned<'a> {

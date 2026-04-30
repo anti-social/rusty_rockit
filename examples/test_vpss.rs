@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use rusty_rockit::{PixelFormat, RockitSys};
+use rusty_rockit::{PixelFormat, RockitMpi};
 use rusty_rockit::vpss::{FrameRateControl, VpssChannelConfig, VpssGroupConfig};
 
 fn main() {
@@ -10,7 +10,7 @@ fn main() {
 }
 
 fn run() -> Result<(), rusty_rockit::Error>{
-    let mpi = RockitSys::init()?;
+    let mpi = RockitMpi::init()?;
 
     let input_pixel_format = PixelFormat::Rgb24;
     let output_pixel_format = PixelFormat::Rgb24;

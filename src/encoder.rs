@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::vi::CameraId;
 use crate::vpss::{FrameRateControl, VpssChannelConfig, VpssGroupConfig};
-use crate::{Error, PixelFormat, RockitSys};
+use crate::{Error, PixelFormat, RockitMpi};
 use crate::mb::MemBufferPoolOwned;
 use crate::venc::{
     self, StreamFrame, VencChannelBindOwned, VencChannelOwned, VencConfig, VencStreamOwned,
@@ -23,7 +23,7 @@ pub struct SimpleEncoder {
 
 impl SimpleEncoder {
     pub fn new(
-        mpi: &RockitSys, config: &VencConfig
+        mpi: &RockitMpi, config: &VencConfig
     ) -> Result<Self, Error> {
         let buffer_size = config.calc_buffer_size();
         log::debug!("Input buffer size: {buffer_size}");
@@ -112,7 +112,7 @@ pub struct CameraEncoder {
 
 impl CameraEncoder {
     pub fn new(
-        mpi: &RockitSys,
+        mpi: &RockitMpi,
         camera_id: CameraId,
         config: &VencConfig,
     ) -> Result<Self, Error> {

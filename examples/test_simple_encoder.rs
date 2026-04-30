@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use argh::{FromArgs, FromArgValue};
-use rusty_rockit::{RockitSys, PixelFormat, SimpleEncoder};
+use rusty_rockit::{RockitMpi, PixelFormat, SimpleEncoder};
 use rusty_rockit::venc::{Codec, H26xRateControl, H264Profile, HevcProfile, VencConfig};
 
 const DEFAULT_BITRATE: u32 = 4 * 1024;
@@ -83,7 +83,7 @@ fn main() {
         });
     let mut out_file = File::create(output_filename).expect("Create file");
         
-    let rockit_sys = RockitSys::init().expect("Rockit");
+    let rockit_sys = RockitMpi::init().expect("Rockit");
 
     let mut encoder = SimpleEncoder::new(
         &rockit_sys, &prepare_encoder_config(&args)
