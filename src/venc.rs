@@ -302,9 +302,9 @@ struct VencChannelInner {
 impl Drop for VencChannelInner {
     fn drop(&mut self) {
         if let Err(e) = self.stop() {
-            log::error!("Error stopping encoder: {e}");
+            log::error!("Error stopping VENC channel [id = {}]: {e}", self.id);
         }
-        log::debug!("Dropping encoder in state: {}", self.id);
+        log::debug!("Destroying VENC channel [id = {}]", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VENC_DestroyChn(self.id),
@@ -329,7 +329,7 @@ impl VencChannelInner {
     }
     
     fn stop(&self) -> Result<(), Error> {
-        log::debug!("Stopping encoder: {}", self.id);
+        log::debug!("Stopping VENC channel [id = {}]", self.id);
         if self.state.load(Ordering::Relaxed) != state::Started::VALUE {
             return Ok(());
         }
@@ -666,8 +666,7 @@ struct VencStreamInner<'a> {
 impl<'a> Drop for VencStreamInner<'a> {
     fn drop(&mut self) {
         log::trace!(
-            "Releasing encoder stream: channel = {}",
-            self.channel_id,
+            "Releasing VENC stream [channel = {}]", self.channel_id,
         );
         unsafe {
             rk_log_err!(

@@ -11,7 +11,7 @@ struct MemBufferPoolInner {
 
 impl Drop for MemBufferPoolInner {
     fn drop(&mut self) {
-        log::debug!("Destroying memory buffer pool: {}", self.id);
+        log::debug!("Destroying memory buffer pool [id = {}]", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_MB_DestroyPool(self.id),
@@ -112,7 +112,7 @@ pub struct MemBufferInner {
 
 impl Drop for MemBufferInner {
     fn drop(&mut self) {
-        log::trace!("Releasing memory buffer from pool: {}", self.pool_id);
+        log::trace!("Releasing memory buffer from pool [pool = {}]", self.pool_id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_MB_ReleaseMB(self.buf_ptr),

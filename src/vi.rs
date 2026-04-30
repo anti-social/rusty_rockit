@@ -44,7 +44,7 @@ pub(crate) struct CameraInner {
 
 impl Drop for CameraInner {
     fn drop(&mut self) {
-        log::debug!("Disabling camera device");
+        log::debug!("Disabling VI device [id = {}]", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_DisableDev(self.id),
@@ -191,7 +191,7 @@ pub(crate) struct ViChannelInner {
 
 impl Drop for ViChannelInner {
     fn drop(&mut self) {
-        log::debug!("Disabling VI channel: {}", self.id);
+        log::debug!("Disabling VI channel [id = {}]", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_DisableChn(0, self.id),
@@ -334,7 +334,7 @@ struct ViFrameInner {
 
 impl Drop for ViFrameInner {
     fn drop(&mut self) {
-        log::trace!("Releasing VI frame for channel: {}", self.channel_id);
+        log::trace!("Releasing VI frame [channel = {}]", self.channel_id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VI_ReleaseChnFrame(

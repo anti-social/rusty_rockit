@@ -60,7 +60,7 @@ pub struct VpssGroupInner {
 impl Drop for VpssGroupInner {
     fn drop(&mut self) {
         if self.state.load(Ordering::Relaxed) == state::Runtime::Started as u8 {
-            log::debug!("Stopping VPSS group: {}", self.id);
+            log::debug!("Stopping VPSS group [id = {}]", self.id);
             unsafe {
                 rk_log_err!(
                     ffi::RK_MPI_VPSS_StopGrp(self.id),
@@ -68,7 +68,7 @@ impl Drop for VpssGroupInner {
                 );
             }
         }
-        log::debug!("Destroying VPSS group: {}", self.id);
+        log::debug!("Destroying VPSS group [id = {}]", self.id);
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_VPSS_DestroyGrp(self.id),
@@ -122,7 +122,7 @@ impl VpssGroupInner {
     pub(crate) fn send_frame(
         &self, pipe_id: i32, frame: &mut MbFrameInner, timeout: Duration
     ) -> Result<(), Error> {
-        log::trace!("Sending VPSS frame: group = {}", self.id);
+        log::trace!("Sending VPSS frame [group = {}]", self.id);
         unsafe {
             rk_check_err!(
                 ffi::RK_MPI_VPSS_SendFrame(
@@ -264,7 +264,10 @@ impl Drop for VpssChannelInner {
     fn drop(&mut self) {
         if self.state.load(Ordering::Relaxed) == channel_state::Runtime::Enabled as u8 {
             if let Err(e) = self.disable() {
-                log::error!("Error disabling VPSS channel: {e}");
+                log::error!(
+                    "Error disabling VPSS channel [ group = {}, channel = {} ]: {e}",
+                    self.group_id, self.id
+                );
             }
         }
     }
@@ -319,7 +322,7 @@ impl VpssChannelInner {
     
     fn enable(&self) -> Result<(), Error> {
         log::debug!(
-            "Enabling VPSS channel: group = {}, channel = {}", self.group_id, self.id
+            "Enabling VPSS channel [group = {}, channel = {}]", self.group_id, self.id
         );
         unsafe {
             rk_check_err!(
@@ -332,7 +335,7 @@ impl VpssChannelInner {
 
     fn disable(&self) -> Result<(), Error> {
         log::debug!(
-            "Disabling VPSS channel: group = {}, channel = {}", self.group_id, self.id
+            "Disabling VPSS channel [group = {}, channel = {}]", self.group_id, self.id
         );
         unsafe {
             rk_check_err!(
@@ -345,7 +348,7 @@ impl VpssChannelInner {
 
     fn get_frame(&self, timeout: Duration) -> Result<VpssFrameInner, Error> {
         log::trace!(
-            "Getting VPSS channel frame: group = {}, channel = {}",
+            "Getting VPSS channel frame [group = {}, channel = {}]",
             self.group_id, self.id
         );
         let frame = unsafe {
@@ -466,7 +469,7 @@ struct VpssFrameInner {
 impl Drop for VpssFrameInner {
     fn drop(&mut self) {
         log::trace!(
-            "Releasing VPSS frame: group = {}, channel = {}",
+            "Releasing VPSS frame [group = {}, channel = {}]",
             self.group_id,
             self.channel_id,
         );

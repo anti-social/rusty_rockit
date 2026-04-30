@@ -147,7 +147,7 @@ pub(crate) struct AcquiredResource<const N: usize> {
 
 impl<const N: usize> Drop for AcquiredResource<N> {
     fn drop(&mut self) {
-        log::debug!("Releasing resource {}: {}", self.resource.name, self.id);
+        log::debug!("Releasing resource [name = {}, id = {}]", self.resource.name, self.id);
         if let Err(e) = self.resource.release(self.id) {
             log::error!(
                 "Error releasing resource [name {}, id = {}]: {e}",
@@ -214,7 +214,7 @@ struct RockitSysInner;
 
 impl Drop for RockitSysInner {
     fn drop(&mut self) {
-        log::info!("Exiting MPI system");
+        log::info!("Exiting MPI");
         unsafe {
             rk_log_err!(
                 ffi::RK_MPI_SYS_Exit(),
@@ -234,7 +234,7 @@ pub(crate) struct ChannelBind {
 impl Drop for ChannelBind {
     fn drop(&mut self) {
         log::debug!(
-            "Unbind channels: {} -> {}",
+            "Unbinding channels: {} -> {}",
             self.src_channel.s32ChnId,
             self.dst_channel.s32ChnId,
         );
