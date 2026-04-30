@@ -16,10 +16,10 @@ pub struct Args {
     // #[argh(option, short = 'i')]
     // input_file: PathBuf,
     /// width
-    #[argh(option, short = 'w')]
+    #[argh(option, short = 'w', default = "1920")]
     width: u16,
     /// height
-    #[argh(option, short = 'h')]
+    #[argh(option, short = 'h', default = "1080")]
     height: u16,
 
     /// logging system
