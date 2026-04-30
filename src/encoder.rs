@@ -5,7 +5,7 @@ use crate::vpss::{FrameRateControl, VpssChannelConfig, VpssGroupConfig};
 use crate::{Error, PixelFormat, RockitMpi};
 use crate::mb::MemBufferPoolOwned;
 use crate::venc::{
-    self, StreamFrame, VencChannelBindOwned, VencChannelOwned, VencConfig, VencStreamOwned,
+    self, StreamFrame, ViVencBindOwned, VencChannelOwned, VencConfig, VencStreamOwned,
     VpssVencBindOwned,
 };
 
@@ -106,7 +106,7 @@ impl SimpleEncoder {
 }
 
 pub struct CameraEncoder {
-    enc: VencChannelBindOwned,
+    enc: ViVencBindOwned,
     frame: StreamFrame,
 }
 
@@ -123,13 +123,13 @@ impl CameraEncoder {
 
         let pipe = cam.get_pipe(pipe_id)
             .ok_or(Error::InvalidPipeId { id: pipe_id })?;
-        let channel = pipe.create_channel(
+        let camera_channel = pipe.create_channel(
             camera_channel_id, config.width, config.height
         )?;
 
         let enc_channel = mpi.venc_channel(&config)?.into_owned();
         let enc_channel = enc_channel.start()?;
-        let bind = enc_channel.bind(&channel)?;
+        let bind = enc_channel.bind_vi(&camera_channel)?;
 
         Ok(Self { enc: bind, frame: StreamFrame::new() })
     }

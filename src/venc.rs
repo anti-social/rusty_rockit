@@ -11,7 +11,7 @@ use crate::{AcquiredResource, ChannelBind, PixelFormat, ResourceManager};
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
 use crate::{Error, RockitMpi, rk_check_err, rk_log_err};
 use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
-use crate::vpss::{self, VpssGroupInner, VpssChannelInner};
+use crate::vpss::{self, VpssChannel, VpssChannelInner, VpssGroupInner};
 
 #[allow(non_camel_case_types)]
 type rkVENC_H265_CBR_S = ffi::rkVENC_H264_CBR_S;
@@ -343,23 +343,17 @@ impl VencChannelInner {
     fn bind(
         &self, module: ffi::rkMOD_ID_E, src_channel_id: i32, src_pipe_id: i32
     ) -> Result<ChannelBind, Error> {
-        let bind = unsafe {
-            let src_channel = ffi::rkMPP_CHN_S {
-                enModId: module,
-                s32DevId: src_pipe_id,
-                s32ChnId: src_channel_id,
-            };
-            let dst_channel = ffi::rkMPP_CHN_S {
-                enModId: ffi::rkMOD_ID_E_RK_ID_VENC,
-                s32DevId: 0,
-                s32ChnId: self.id,
-            };
-            rk_check_err!(
-                ffi::RK_MPI_SYS_Bind(&src_channel as *const _, &dst_channel as *const _)
-            );
-            ChannelBind { src_channel, dst_channel }
+        let src_channel = ffi::rkMPP_CHN_S {
+            enModId: module,
+            s32DevId: src_pipe_id,
+            s32ChnId: src_channel_id,
         };
-        Ok(bind)
+        let dst_channel = ffi::rkMPP_CHN_S {
+            enModId: ffi::rkMOD_ID_E_RK_ID_VENC,
+            s32DevId: 0,
+            s32ChnId: self.id,
+        };
+        ChannelBind::new(src_channel, dst_channel)
     }
 
     pub fn send_frame(&self, frame: &MbFrameInner, timeout: Duration) -> Result<(), Error> {
@@ -477,12 +471,23 @@ impl<'a> VencChannel<'a, state::Initialized> {
 }
 
 impl<'a> VencChannel<'a, state::Started> {
-    pub fn bind(&'a self, vi_channel: &'a ViChannel) -> Result<VencChannelBind<'a>, Error> {
+    pub fn bind_vi<'b>(&'a self, vi_channel: &'b ViChannel) -> Result<ViVencBind<'a, 'b>, Error> {
         self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.id(), vi_channel.pipe_id())
-            .map(|inner| VencChannelBind {
+            .map(|inner| ViVencBind {
                 _inner: inner,
                 venc_channel: self,
                 _vi_channel: vi_channel,
+            })
+    }
+
+    pub fn bind_vpss<'b>(
+        &'a self, vpss_channel: &'b VpssChannel<'b, vpss::channel_state::Enabled>
+    ) -> Result<VpssVencBind<'a, 'b>, Error> {
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vpss_channel.id(), 0)
+            .map(|inner| VpssVencBind {
+                _inner: inner,
+                venc_channel: self,
+                vpss_channel,
             })
     }
 
@@ -533,9 +538,9 @@ impl VencChannelOwned<state::Initialized> {
 }
 
 impl VencChannelOwned<state::Started> {
-    pub fn bind(&self, vi_channel: &ViChannelOwned) -> Result<VencChannelBindOwned, Error> {
+    pub fn bind_vi(&self, vi_channel: &ViChannelOwned) -> Result<ViVencBindOwned, Error> {
         self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.id(), vi_channel.pipe_id())
-            .map(|inner| VencChannelBindOwned {
+            .map(|inner| ViVencBindOwned {
                 _inner: Rc::new(inner),
                 venc_channel: Rc::clone(&self.inner),
                 _vi_channel: Rc::clone(&vi_channel.inner),
@@ -575,7 +580,7 @@ impl VencChannelOwned<state::Started> {
     }
 }
 
-pub struct VencChannelBindOwned {
+pub struct ViVencBindOwned {
     _inner: Rc<ChannelBind>,
     venc_channel: Rc<VencChannelInner>,
     _vi_channel: Rc<ViChannelInner>,
@@ -583,7 +588,7 @@ pub struct VencChannelBindOwned {
     _mpi: RockitMpi,
 }
 
-impl VencChannelBindOwned {
+impl ViVencBindOwned {
     pub fn get_stream<'a>(
         &self, frame: &'a mut StreamFrame, timeout: Duration
     ) -> Result<VencStreamOwned<'a>, Error> {
@@ -623,18 +628,40 @@ impl VpssVencBindOwned {
     }
 }
 
-pub struct VencChannelBind<'a> {
+pub struct ViVencBind<'a, 'b> {
     _inner: ChannelBind,
     venc_channel: &'a VencChannel<'a, state::Started>,
-    _vi_channel: &'a ViChannel<'a>,
+    _vi_channel: &'b ViChannel<'b>,
 }
 
-impl<'a> VencChannelBind<'a> {
-    pub fn get_stream<'b>(
-        &'a self,
-        frame: &'b mut StreamFrame,
+impl<'a, 'b> ViVencBind<'a, 'b> {
+    pub fn get_stream<'c>(
+        &self,
+        frame: &'c mut StreamFrame,
         timeout: Duration,
-    ) -> Result<VencStream<'a, 'b>, Error> {
+    ) -> Result<VencStream<'a, 'c>, Error> {
+        self.venc_channel.get_stream(frame, timeout)
+    }
+}
+
+pub struct VpssVencBind<'a, 'b> {
+    _inner: ChannelBind,
+    venc_channel: &'a VencChannel<'a, state::Started>,
+    vpss_channel: &'b VpssChannel<'b, vpss::channel_state::Enabled>,
+}
+
+impl<'a, 'b> VpssVencBind<'a, 'b> {
+    pub fn send_frame(
+        &self, pipe_id: u8, frame: &mut MbFrameOwned, timeout: Duration
+    ) -> Result<(), Error> {
+        self.vpss_channel.group.send_frame(pipe_id as i32, &mut frame.inner, timeout)
+    }
+
+    pub fn get_stream<'c>(
+        &self,
+        frame: &'c mut StreamFrame,
+        timeout: Duration,
+    ) -> Result<VencStream<'a, 'c>, Error> {
         self.venc_channel.get_stream(frame, timeout)
     }
 }

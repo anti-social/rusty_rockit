@@ -5,8 +5,12 @@ use std::slice;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
+use crate::{
+    AcquiredResource, ChannelBind, Error, PixelFormat, ResourceManager, RockitMpi,
+    ffi, rk_check_err, rk_log_err
+};
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
-use crate::{AcquiredResource, Error, PixelFormat, ResourceManager, RockitMpi, ffi, rk_check_err, rk_log_err};
+use crate::vi::{ViChannel, ViChannelOwned};
 
 pub(crate) type VpssGroupResourceManager = ResourceManager<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
 pub(crate) type VpssGroupAcquired = AcquiredResource<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
@@ -346,6 +350,20 @@ impl VpssChannelInner {
         Ok(())
     }
 
+    pub fn bind_vi(&self, pipe_id: i32, channel_id: i32) -> Result<ChannelBind, Error> {
+        let src_channel = ffi::rkMPP_CHN_S {
+            enModId: ffi::rkMOD_ID_E_RK_ID_VI,
+            s32DevId: pipe_id,
+            s32ChnId: channel_id,
+        };
+        let dst_channel = ffi::rkMPP_CHN_S {
+            enModId: ffi::rkMOD_ID_E_RK_ID_VPSS,
+            s32DevId: 0,
+            s32ChnId: self.id,
+        };
+        ChannelBind::new(src_channel, dst_channel)
+    }
+    
     fn get_frame(&self, timeout: Duration) -> Result<VpssFrameInner, Error> {
         log::trace!(
             "Getting VPSS channel frame [group = {}, channel = {}]",
@@ -394,6 +412,17 @@ impl<'a> VpssChannel<'a, channel_state::Disabled> {
 }
 
 impl<'a> VpssChannel<'a, channel_state::Enabled> {
+    pub fn bind_vi<'b>(
+        &'a self, vi_channel: &'b ViChannel
+    ) -> Result<VpssViChannelBind<'a, 'b>, Error> {
+        self.inner.bind_vi(vi_channel.pipe_id(), vi_channel.id())
+            .map(|inner| VpssViChannelBind {
+                _inner: inner,
+                vpss_channel: self,
+                _vi_channel: vi_channel,
+            })
+    }
+    
     pub fn get_frame(&'a self, timeout: Duration) -> Result<VpssFrame<'a>, Error> {
         self.inner.get_frame(timeout)
             .map(|inner| VpssFrame {
@@ -457,6 +486,30 @@ impl VpssChannelOwned<channel_state::Enabled> {
             _mpi: self._mpi.clone(),
             _marker: PhantomData,
         })
+    }
+}
+
+pub struct VpssViChannelBind<'a, 'b> {
+    _inner: ChannelBind,
+    vpss_channel: &'a VpssChannel<'a, channel_state::Enabled>,
+    _vi_channel: &'b ViChannel<'b>,
+}
+
+impl<'a, 'b> VpssViChannelBind<'a, 'b> {
+    pub fn get_frame(&self, timeout: Duration) -> Result<VpssFrame<'a>, Error> {
+        self.vpss_channel.get_frame(timeout)
+    }
+}
+
+pub struct VpssViChannelBindOwned {
+    _inner: ChannelBind,
+    vpss_channel: Rc<VpssChannelOwned<channel_state::Enabled>>,
+    _vi_channel: Rc<ViChannelOwned>,
+}
+
+impl VpssViChannelBindOwned {
+    pub fn get_frame(&self, timeout: Duration) -> Result<VpssFrameOwned, Error> {
+        self.vpss_channel.get_frame(timeout)
     }
 }
 

@@ -74,7 +74,7 @@ fn main() {
     let cam = rockit_sys.camera(camera_id, 1).expect("Camera device");
 
     let pipe = cam.get_pipe(0).expect("Rockit pipe");
-    let channel = pipe.create_channel(0, width, height).expect("Rockit channel");
+    let camera_channel = pipe.create_channel(0, width, height).expect("Rockit channel");
 
     let enc_channel = rockit_sys.venc_channel(
         &VencConfig {
@@ -87,7 +87,7 @@ fn main() {
     ).expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");
     {
-        let _enc = enc_channel.bind(&channel).expect("Bind encoder");
+        let _enc = enc_channel.bind_vi(&camera_channel).expect("Bind encoder");
         let mut frame = StreamFrame::new();
 
         let mut file = File::create(output_filename).expect("Create file");

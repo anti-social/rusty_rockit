@@ -249,6 +249,20 @@ impl Drop for ChannelBind {
     }
 }
 
+impl ChannelBind {
+    pub(crate) fn new(
+        src_channel: ffi::rkMPP_CHN_S,
+        dst_channel: ffi::rkMPP_CHN_S,
+    ) -> Result<Self, Error> {
+        unsafe {
+            rk_check_err!(
+                ffi::RK_MPI_SYS_Bind(&src_channel as *const _, &dst_channel as *const _)
+            );
+        }
+        Ok(ChannelBind { src_channel, dst_channel })
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum PixelFormat {
     Nv12,
