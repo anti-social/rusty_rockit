@@ -46,7 +46,7 @@ pub struct VencConfig {
 impl VencConfig {
     pub fn calc_frame_buffer_size(&self) -> u32 {
         let bytes_per_pixel = self.pixel_format.bytes_per_pixel();
-        (bytes_per_pixel * self.width as u32 * self.height as u32).ceil()
+        (bytes_per_pixel * align2(self.width as u32) * align2(self.height as u32)).ceil()
     }
     
     fn calc_buffer_size(&self) -> u32 {
