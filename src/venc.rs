@@ -1,7 +1,8 @@
-use core::slice;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::cmp::min;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::slice;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use rockit_sys::mpi as ffi;
@@ -43,9 +44,17 @@ pub struct VencConfig {
 }
 
 impl VencConfig {
-    pub fn calc_buffer_size(&self) -> u32 {
+    pub fn calc_frame_buffer_size(&self) -> u32 {
         let bytes_per_pixel = self.pixel_format.bytes_per_pixel();
         (bytes_per_pixel * self.width as u32 * self.height as u32).ceil()
+    }
+    
+    fn calc_buffer_size(&self) -> u32 {
+        min(
+            self.codec.max_bitrate() / 8 / self.codec.framerate() as u32
+                * self.codec.gop() as u32 * 2,
+            self.calc_frame_buffer_size()
+        )
     }
 }
 
@@ -89,6 +98,53 @@ impl Codec {
             }
             Self::Hevc { rate_control: H26xRateControl::Avbr { framerate, .. }, .. } => {
                 *framerate
+            }
+        }
+    }
+
+    pub fn max_bitrate(&self) -> u32 {
+        let bitrate_kbps = match self {
+            Self::H264 { rate_control: H26xRateControl::Cbr { bitrate_kbps, .. }, .. } => {
+                *bitrate_kbps
+            }
+            Self::H264 { rate_control: H26xRateControl::Vbr { max_bitrate_kbps, .. }, .. } => {
+                *max_bitrate_kbps
+            }
+            Self::H264 { rate_control: H26xRateControl::Avbr { max_bitrate_kbps, .. }, .. } => {
+                *max_bitrate_kbps
+            }
+            Self::Hevc { rate_control: H26xRateControl::Cbr { bitrate_kbps, .. }, .. } => {
+                *bitrate_kbps
+            }
+            Self::Hevc { rate_control: H26xRateControl::Vbr { max_bitrate_kbps, .. }, .. } => {
+                *max_bitrate_kbps
+            }
+            Self::Hevc { rate_control: H26xRateControl::Avbr { max_bitrate_kbps, .. }, .. } => {
+                *max_bitrate_kbps
+            }
+        };
+        bitrate_kbps * 1024
+    }
+
+    pub fn gop(&self) -> u16 {
+        match self {
+            Self::H264 { rate_control: H26xRateControl::Cbr { gop, .. }, .. } => {
+                *gop
+            }
+            Self::H264 { rate_control: H26xRateControl::Vbr { gop, .. }, .. } => {
+                *gop
+            }
+            Self::H264 { rate_control: H26xRateControl::Avbr { gop, .. }, .. } => {
+                *gop
+            }
+            Self::Hevc { rate_control: H26xRateControl::Cbr { gop, .. }, .. } => {
+                *gop
+            }
+            Self::Hevc { rate_control: H26xRateControl::Vbr { gop, .. }, .. } => {
+                *gop
+            }
+            Self::Hevc { rate_control: H26xRateControl::Avbr { gop, .. }, .. } => {
+                *gop
             }
         }
     }

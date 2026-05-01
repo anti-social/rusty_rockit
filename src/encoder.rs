@@ -25,8 +25,8 @@ impl SimpleEncoder {
     pub fn new(
         mpi: &RockitMpi, config: &VencConfig
     ) -> Result<Self, Error> {
-        let buffer_size = config.calc_buffer_size();
-        log::debug!("Input buffer size: {buffer_size}");
+        let buffer_size = config.calc_frame_buffer_size();
+        log::debug!("Frame buffer size: {buffer_size}");
 
         let pixel_format = config.pixel_format;
         let mut config = config.clone();
