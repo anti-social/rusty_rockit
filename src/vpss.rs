@@ -12,11 +12,6 @@ use crate::{
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
 use crate::vi::{ViChannel, ViChannelOwned};
 
-pub(crate) type VpssGroupResourceManager = ResourceManager<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
-pub(crate) type VpssGroupAcquired = AcquiredResource<{ ffi::VPSS_MAX_GRP_NUM as usize }>;
-pub(crate) type VpssChannelResourceManager = ResourceManager<{ ffi::VPSS_MAX_CHN_NUM as usize }>;
-pub(crate) type VpssChannelAcquired = AcquiredResource<{ ffi::VPSS_MAX_CHN_NUM as usize }>;
-
 #[derive(Debug, Clone, Copy)]
 pub struct VpssGroupConfig {
     pub pixel_format: PixelFormat,
@@ -57,8 +52,8 @@ pub mod state {
 pub struct VpssGroupInner {
     id: i32,
     state: AtomicU8,
-    channels: VpssChannelResourceManager,
-    _resource: VpssGroupAcquired,
+    channels: ResourceManager,
+    _resource: AcquiredResource,
 }
 
 impl Drop for VpssGroupInner {
@@ -84,7 +79,7 @@ impl Drop for VpssGroupInner {
 
 impl VpssGroupInner {
     fn new(
-        resource: VpssGroupAcquired, id: i32, cfg: &VpssGroupConfig
+        resource: AcquiredResource, id: i32, cfg: &VpssGroupConfig
     ) -> Result<Self, Error> {
         unsafe {
             let attrs = ffi::rkVPSS_GRP_ATTR_S {
@@ -103,7 +98,9 @@ impl VpssGroupInner {
         Ok(Self {
             id,
             state: AtomicU8::new(state::Runtime::Initialized as u8),
-            channels: ResourceManager::new(format!("vpss_channel:{id}")),
+            channels: ResourceManager::new(
+                format!("vpss_channel:{id}"), ffi::VPSS_MAX_CHN_NUM as usize
+            ),
             _resource: resource,
         })
     }
@@ -261,7 +258,7 @@ pub(crate) struct VpssChannelInner {
     id: i32,
     group_id: i32,
     state: AtomicU8,
-    _resource: VpssChannelAcquired,
+    _resource: AcquiredResource,
 }
 
 impl Drop for VpssChannelInner {
@@ -279,7 +276,7 @@ impl Drop for VpssChannelInner {
 
 impl VpssChannelInner {
     fn new(
-        resource: VpssChannelAcquired,
+        resource: AcquiredResource,
         group_id: i32,
         cfg: &VpssChannelConfig,
     ) -> Result<Self, Error> {

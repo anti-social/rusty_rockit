@@ -7,7 +7,7 @@ use std::time::Duration;
 use rockit_sys::mpi as ffi;
 
 use crate::vpss::VpssChannelOwned;
-use crate::{AcquiredResource, ChannelBind, PixelFormat, ResourceManager};
+use crate::{AcquiredResource, ChannelBind, PixelFormat};
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
 use crate::{Error, RockitMpi, rk_check_err, rk_log_err};
 use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
@@ -19,9 +19,6 @@ type rkVENC_H265_CBR_S = ffi::rkVENC_H264_CBR_S;
 type rkVENC_H265_VBR_S = ffi::rkVENC_H264_VBR_S;
 #[allow(non_camel_case_types)]
 type rkVENC_H265_AVBR_S = ffi::rkVENC_H264_AVBR_S;
-
-pub(crate) type VencChannelResourceManager = ResourceManager<{ ffi::VENC_MAX_CHN_NUM as usize }>;
-pub(crate) type VencChannelAcquired = AcquiredResource<{ ffi::VENC_MAX_CHN_NUM as usize }>;
 
 pub mod state {
     pub struct Initialized;
@@ -296,7 +293,7 @@ pub enum HevcProfile {
 struct VencChannelInner {
     id: i32,
     state: AtomicU8,
-    _resource: VencChannelAcquired,
+    _resource: AcquiredResource,
 }
 
 impl Drop for VencChannelInner {

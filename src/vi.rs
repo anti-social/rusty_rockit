@@ -6,12 +6,9 @@ use std::time::Duration;
 use rockit_sys::mpi as ffi;
 
 use crate::{
-    AcquiredResource, Error, RK_ERR_VI_NOT_CONFIG, RK_SUCCESS, ResourceManager, RockitMpi,
+    AcquiredResource, Error, RK_ERR_VI_NOT_CONFIG, RK_SUCCESS, RockitMpi,
     rk_check_err, rk_log_err,
 };
-
-pub(crate) type ViCameraResourceManager = ResourceManager<{ ffi::VI_MAX_DEV_NUM as usize }>;
-pub(crate) type ViCameraAcquired = AcquiredResource<{ ffi::VI_MAX_DEV_NUM as usize }>;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -39,7 +36,7 @@ pub(crate) struct CameraInner {
     _dev: ffi::rkVI_DEV_ATTR_S,
     id: i32,
     pipe: ffi::rkVI_DEV_BIND_PIPE_S,
-    _resource: ViCameraAcquired,
+    _resource: AcquiredResource,
 }
 
 impl Drop for CameraInner {

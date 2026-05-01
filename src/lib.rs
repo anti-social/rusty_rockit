@@ -1,6 +1,6 @@
 use std::cell::OnceCell;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use rockit_sys::mpi as ffi;
 use snafu::Snafu;
@@ -12,10 +12,10 @@ pub use encoder::{CameraEncoder, SimpleEncoder};
 pub mod mb;
 use mb::MemBufferPool;
 pub mod venc;
-use venc::{VencChannel, VencChannelResourceManager, VencConfig};
+use venc::{VencChannel, VencConfig};
 pub mod vi;
-use vi::{Camera, CameraId, ViCameraResourceManager};
-use vpss::{VpssGroup, VpssGroupConfig, VpssGroupResourceManager};
+use vi::{Camera, CameraId};
+use vpss::{VpssGroup, VpssGroupConfig};
 pub mod vpss;
 
 const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
@@ -97,55 +97,64 @@ macro_rules! rk_log_err {
     };
 }
 
-#[derive(Clone)]
-pub(crate) struct ResourceManager<const N: usize> {
-    name: String,
-    state: Arc<Mutex<[AtomicBool; N]>>,
+struct ResourceState {
+    available: BTreeSet<usize>,
+    busy: HashSet<usize>,
 }
 
-impl<const N: usize> ResourceManager<N> {
-    pub(crate) fn new(name: String) -> Self {
+#[derive(Clone)]
+pub(crate) struct ResourceManager {
+    name: String,
+    state: Arc<Mutex<ResourceState>>,
+}
+
+impl ResourceManager {
+    pub(crate) fn new(name: String, capacity: usize) -> Self {
+        let mut available = BTreeSet::new();
+        for i in 0..capacity {
+            available.insert(i);
+        }
         Self {
             name: name.to_string(),
-            state: Arc::new(Mutex::new([const { AtomicBool::new(false) }; N])),
+            state: Arc::new(Mutex::new(ResourceState { available, busy: HashSet::new() })),
         }
     }
 
-    pub(crate) fn acqure(&self) -> Result<AcquiredResource<N>, Error> {
-        let slots = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-        for (id, slot) in slots.iter().enumerate() {
-            if slot.load(Ordering::Relaxed) {
-                continue;
-            }
-            slot.store(true, Ordering::Relaxed);
-            return Ok(AcquiredResource { id, resource: self.clone() });
-        }
-        Err(Error::ResourceUnavailable { name: self.name.clone(), id: None })
+    pub(crate) fn acqure(&self) -> Result<AcquiredResource, Error> {
+        let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        let Some(id) = state.available.pop_first() else {
+            return Err(Error::ResourceUnavailable { name: self.name.clone(), id: None });
+        };
+        state.busy.insert(id);
+        Ok(AcquiredResource { id, resource: self.clone() })
     }
 
-    pub(crate) fn acqure_specific(&self, id: usize) -> Result<AcquiredResource<N>, Error> {
-        let slot = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-        if slot[id].load(Ordering::Relaxed) {
+    pub(crate) fn acqure_specific(&self, id: usize) -> Result<AcquiredResource, Error> {
+        let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if !state.available.remove(&id) {
             return Err(Error::ResourceUnavailable { name: self.name.clone(), id: Some(id) });
         }
-        slot[id].store(true, Ordering::Relaxed);
+        state.busy.insert(id);
         Ok(AcquiredResource { id, resource: self.clone() })
     }
     
     pub(crate) fn release(&self, id: usize) -> Result<(), Error> {
-        let slots = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-        slots[id].store(false, Ordering::Relaxed);
+        let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if !state.busy.remove(&id) {
+            return Err(Error::ResourceUnavailable { name: self.name.clone(), id: Some(id) });
+        };
+        state.available.insert(id);
         Ok(())
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct AcquiredResource<const N: usize> {
+pub(crate) struct AcquiredResource {
     id: usize,
-    resource: ResourceManager<N>,
+    resource: ResourceManager,
 }
 
-impl<const N: usize> Drop for AcquiredResource<N> {
+impl Drop for AcquiredResource {
     fn drop(&mut self) {
         log::debug!("Releasing resource [name = {}, id = {}]", self.resource.name, self.id);
         if let Err(e) = self.resource.release(self.id) {
@@ -160,9 +169,9 @@ impl<const N: usize> Drop for AcquiredResource<N> {
 #[derive(Clone)]
 pub struct RockitMpi {
     _inner: Arc<RockitSysInner>,
-    pub(crate) cameras: ViCameraResourceManager,
-    pub(crate) venc_channels: VencChannelResourceManager,
-    pub(crate) vpss_groups: VpssGroupResourceManager,
+    pub(crate) cameras: ResourceManager,
+    pub(crate) venc_channels: ResourceManager,
+    pub(crate) vpss_groups: ResourceManager,
 }
 
 impl RockitMpi {
@@ -177,9 +186,13 @@ impl RockitMpi {
         let _ = mpi_sys_init.set(());
         Ok(Self {
             _inner: Arc::new(RockitSysInner),
-            cameras: ResourceManager::new("camera".to_string()),
-            venc_channels: ResourceManager::new("venc_channel".to_string()),
-            vpss_groups: ResourceManager::new("vpss_group".to_string()),
+            cameras: ResourceManager::new("camera".to_string(), ffi::VI_MAX_DEV_NUM as usize),
+            venc_channels: ResourceManager::new(
+                "venc_channel".to_string(), ffi::VENC_MAX_CHN_NUM as usize
+            ),
+            vpss_groups: ResourceManager::new(
+                "vpss_group".to_string(), ffi::VPSS_MAX_GRP_NUM as usize
+            ),
         })
     }
 
