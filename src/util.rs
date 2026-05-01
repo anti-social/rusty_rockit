@@ -1,6 +1,10 @@
 use core::num::NonZero;
 use core::ops::Mul;
 
+pub(crate) fn align2(size: u32) -> u32 {
+    (size + 1) & !1
+}
+
 pub struct RatioU32 {
     numer: u32,
     denom: NonZero<u32>,

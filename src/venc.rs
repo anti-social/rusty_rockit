@@ -12,6 +12,7 @@ use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
 use crate::{Error, RockitMpi, rk_check_err, rk_log_err};
 use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
 use crate::vpss::{self, VpssChannel, VpssChannelInner, VpssGroupInner};
+use crate::util::align2;
 
 #[allow(non_camel_case_types)]
 type rkVENC_H265_CBR_S = ffi::rkVENC_H264_CBR_S;
@@ -419,8 +420,8 @@ impl<'a> VencChannel<'a, state::Initialized> {
                     u32PicHeight: height,
                     u32MaxPicWidth: width,
                     u32MaxPicHeight: height,
-                    u32VirWidth: width,
-                    u32VirHeight: height,
+                    u32VirWidth: align2(width),
+                    u32VirHeight: align2(height),
                     u32StreamBufCnt: cfg.buf_count as u32,
                     u32BufSize: cfg.calc_buffer_size(),
                     bByFrame: false as u32,
