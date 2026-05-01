@@ -45,8 +45,7 @@ fn run() -> Result<(), rusty_rockit::Error>{
     let vpss_channel = vpss_channel.enable()?;
 
     let bytes_per_pixel = vpss_config.pixel_format.bytes_per_pixel();
-    let input_buffer_size = width as u32 * height as u32 *
-        bytes_per_pixel.0 as u32 / bytes_per_pixel.1 as u32;
+    let input_buffer_size = (bytes_per_pixel * width as u32 * height as u32).ceil();
     println!(">>> Input buffer size: {input_buffer_size}");
     let pool = mpi.pool(input_buffer_size)?;
     let mut buffer = pool.get_buffer(input_buffer_size)?;

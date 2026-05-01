@@ -17,6 +17,8 @@ pub mod vi;
 use vi::{Camera, CameraId};
 use vpss::{VpssGroup, VpssGroupConfig};
 pub mod vpss;
+mod util;
+pub use util::RatioU32;
 
 const RK_SUCCESS: i32 = ffi::RK_SUCCESS as i32;
 const RK_ERR_APPID: u32 = 0x80000000 + 0x20000000;
@@ -294,13 +296,13 @@ impl PixelFormat {
         }
     }
 
-    pub fn bytes_per_pixel(&self) -> (u8, u8) {
+    pub fn bytes_per_pixel(&self) -> RatioU32 {
         use PixelFormat::*;
 
         match self {
-            Nv12 => (3, 2),
-            Yuyv => (2, 1),
-            Rgb24 => (3, 1),
+            Nv12 => RatioU32::new(3, 2),
+            Yuyv => 2.into(),
+            Rgb24 => 3.into(),
         }
     }
 }
