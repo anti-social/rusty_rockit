@@ -150,6 +150,8 @@ pub extern "C" fn RK_MPI_VI_DisableDev(ViDev: ffi::VI_DEV) -> ffi::RK_S32 {
     }
 }
 
+/// Binds pipes to an enabled device. As in the real library, binding is static: it is
+/// only possible once per enable and the pipes must not be bound to another device.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn RK_MPI_VI_SetDevBindPipe(
     ViDev: ffi::VI_DEV, pstDevBindPipe: *const ffi::VI_DEV_BIND_PIPE_S,
@@ -157,23 +159,39 @@ pub unsafe extern "C" fn RK_MPI_VI_SetDevBindPipe(
     let Some(pipes) = (unsafe { pstDevBindPipe.as_ref() }) else {
         return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_NULL_PTR);
     };
+    let num = (pipes.u32Num as usize).min(pipes.PipeId.len());
+    let pipe_ids = &pipes.PipeId[..num];
     if let Some(code) =
-        enter("RK_MPI_VI_SetDevBindPipe", format_args!("{ViDev}, num={}", pipes.u32Num))
+        enter("RK_MPI_VI_SetDevBindPipe", format_args!("{ViDev}, pipes={pipe_ids:?}"))
     {
         return code;
     }
     let mut state = lock();
     try_rk!(check_dev(&state, ViDev));
-    if pipes.u32Num > ffi::VI_MAX_PIPE_NUM {
+    if !(1..=ffi::VI_MAX_PHY_PIPE_NUM).contains(&pipes.u32Num)
+        || pipe_ids.iter().any(|p| !(0..ffi::VI_MAX_PIPE_NUM as i32).contains(p))
+    {
         return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_ILLEGAL_PARAM);
     }
+    if pipe_ids.iter().any(|&p| pipe_dev(&state, p).is_some_and(|d| d != ViDev)) {
+        return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_EXIST);
+    }
     match state.vi_devs.get_mut(&ViDev) {
-        Some(dev) if dev.attr.is_some() => {
+        Some(dev) if dev.enabled && dev.pipes.is_none() => {
             dev.pipes = Some(*pipes);
             RK_SUCCESS
         }
+        Some(dev) if dev.enabled => rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_PERM),
         _ => rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_CONFIG),
     }
+}
+
+/// The enabled device a pipe is bound to.
+fn pipe_dev(state: &State, pipe: ffi::VI_PIPE) -> Option<ffi::VI_DEV> {
+    state.vi_devs.iter().find_map(|(&id, dev)| {
+        let pipes = dev.pipes.as_ref().filter(|_| dev.enabled)?;
+        pipes.PipeId[..pipes.u32Num as usize].contains(&pipe).then_some(id)
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -192,6 +210,9 @@ pub unsafe extern "C" fn RK_MPI_VI_SetChnAttr(
     }
     let mut state = lock();
     try_rk!(check_chn(&state, ViPipe, ViChn));
+    if pipe_dev(&state, ViPipe).is_none() {
+        return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_CONFIG);
+    }
     if width == 0 || height == 0 {
         return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_ILLEGAL_PARAM);
     }
@@ -215,6 +236,9 @@ pub extern "C" fn RK_MPI_VI_EnableChn(ViPipe: ffi::VI_PIPE, ViChn: ffi::VI_CHN) 
     }
     let mut state = lock();
     try_rk!(check_chn(&state, ViPipe, ViChn));
+    if pipe_dev(&state, ViPipe).is_none() {
+        return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_CONFIG);
+    }
     match state.vi_chns.get_mut(&(ViPipe, ViChn)) {
         Some(chn) if chn.enabled => rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_EXIST),
         Some(chn) => {

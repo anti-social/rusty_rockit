@@ -35,7 +35,6 @@ impl TryFrom<u8> for CameraId {
 pub(crate) struct CameraInner {
     _dev: ffi::rkVI_DEV_ATTR_S,
     id: i32,
-    pipe: ffi::rkVI_DEV_BIND_PIPE_S,
     _resource: AcquiredResource,
 }
 
@@ -51,21 +50,30 @@ impl Drop for CameraInner {
     }
 }
 
+impl CameraInner {
+    /// Rockit binds a single pipe to a VI device and the pipe id must be the same as
+    /// the device id (Rockchip MPI guide, VI_DEV_BIND_PIPE_S).
+    fn pipe_id(&self) -> i32 {
+        self.id
+    }
+}
+
 pub struct CameraOwned {
     inner: Rc<CameraInner>,
     _mpi: RockitMpi,
 }
 
 impl CameraOwned {
-    pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipeOwned> {
-        if pipe_id as u32 >= self.inner.pipe.u32Num {
-            return None;
-        }
-        Some(ViPipeOwned {
+    pub fn id(&self) -> i32 {
+        self.inner.id
+    }
+
+    pub fn pipe(&self) -> ViPipeOwned {
+        ViPipeOwned {
             _mpi: self._mpi.clone(),
             camera: Rc::clone(&self.inner),
-            id: pipe_id as i32,
-        })
+            id: self.inner.pipe_id(),
+        }
     }
 }
 
@@ -75,57 +83,46 @@ pub struct Camera<'a> {
 }
 
 impl<'a> Camera<'a> {
-    pub(crate) fn new(
-        mpi: &'a RockitMpi,
-        dev_id: u8,
-        num_pipes: u8, 
-    ) -> Result<Self, Error> {
-        if dev_id as u32 > ffi::VI_MAX_DEV_NUM {
-            return Err(Error::InvalidDevId { id: dev_id });
-        }
-        if num_pipes as u32 > ffi::VI_MAX_PIPE_NUM {
-            return Err(Error::RequestedTooManyPipes { num: num_pipes });
-        }
-        
-        let dev_id = dev_id as i32;
-        let (dev, pipe) = unsafe {
+    pub(crate) fn new(mpi: &'a RockitMpi, camera_id: CameraId) -> Result<Self, Error> {
+        let resource = mpi.cameras.acqure_specific(camera_id as usize)?;
+        let dev_id = camera_id as i32;
+        let dev = unsafe {
             let mut dev = MaybeUninit::zeroed();
             let res = ffi::RK_MPI_VI_GetDevAttr(dev_id, dev.as_mut_ptr());
             if res == RK_ERR_VI_NOT_CONFIG {
                 rk_check_err!(ffi::RK_MPI_VI_SetDevAttr(dev_id, dev.as_mut_ptr()));
             }
+            dev.assume_init()
+        };
+        // From here on the device is disabled on drop
+        let inner = CameraInner { id: dev_id, _dev: dev, _resource: resource };
 
+        unsafe {
+            // Binding a pipe is only possible right after enabling the device
             if ffi::RK_MPI_VI_GetDevIsEnable(dev_id) != RK_SUCCESS {
                 rk_check_err!(ffi::RK_MPI_VI_EnableDev(dev_id));
+
+                let mut pipe_ids = [0; ffi::MAX_VI_BIND_PIPE_NUM as usize];
+                pipe_ids[0] = inner.pipe_id();
+                let mut pipe = ffi::rkVI_DEV_BIND_PIPE_S {
+                    u32Num: 1,
+                    PipeId: pipe_ids,
+                    bDataOffline: 0,
+                    bUserStartPipe: [0; ffi::MAX_VI_BIND_PIPE_NUM as usize],
+                };
+                rk_check_err!(ffi::RK_MPI_VI_SetDevBindPipe(dev_id, &mut pipe as *mut _));
             }
+        }
 
-            let mut pipe = ffi::rkVI_DEV_BIND_PIPE_S {
-                u32Num: num_pipes as u32,
-                PipeId: [0; ffi::MAX_VI_BIND_PIPE_NUM as usize],
-                bDataOffline: 0,
-                bUserStartPipe: [0; ffi::MAX_VI_BIND_PIPE_NUM as usize],
-            };
-            rk_check_err!(ffi::RK_MPI_VI_SetDevBindPipe(dev_id, &mut pipe as *mut _));
-
-            (dev.assume_init(), pipe)
-        };
-
-        Ok(Self {
-            _mpi: mpi,
-            inner: CameraInner {
-                id: dev_id,
-                _dev: dev,
-                pipe,
-                _resource: mpi.cameras.acqure_specific(dev_id as usize)?,
-            },
-        })
+        Ok(Self { _mpi: mpi, inner })
     }
 
-    pub fn get_pipe(&self, pipe_id: u8) -> Option<ViPipe<'_>> {
-        if pipe_id as u32 >= self.inner.pipe.u32Num {
-            return None;
-        }
-        Some(ViPipe::new(self, pipe_id as i32))
+    pub fn id(&self) -> i32 {
+        self.inner.id
+    }
+
+    pub fn pipe(&self) -> ViPipe<'_> {
+        ViPipe::new(self, self.inner.pipe_id())
     }
 
     pub fn into_owned(self) -> CameraOwned {
@@ -205,8 +202,8 @@ impl ViChannelInner {
         width: u16,
         height: u16,
     ) -> Result<Self, Error> {
-        if channel_id as u32 > ffi::VI_MAX_CHN_NUM {
-            return Err(Error::InvalidDevId { id: channel_id });
+        if channel_id as u32 >= ffi::VI_MAX_CHN_NUM {
+            return Err(Error::InvalidChannelId { id: channel_id });
         }
         let channel_id = channel_id as i32;
 

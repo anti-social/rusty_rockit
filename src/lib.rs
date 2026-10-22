@@ -59,12 +59,6 @@ pub enum Error {
     ResourceUnavailable { name: String, id: Option<usize> },
     #[snafu(display("Invalid camera id: {id}"))]
     InvalidCameraId { id: u8 },
-    #[snafu(display("Invalid device id: {id}"))]
-    InvalidDevId { id: u8 },
-    #[snafu(display("Invalid pipe id: {id}"))]
-    InvalidPipeId { id: u8 },
-    #[snafu(display("Requested too many pipes: {num}"))]
-    RequestedTooManyPipes { num: u8 },
     #[snafu(display("Invalid channel id: {id}"))]
     InvalidChannelId { id: u8 },
     #[snafu(display("Invalid frame pointer"))]
@@ -198,10 +192,8 @@ impl RockitMpi {
         })
     }
 
-    pub fn camera<'a>(
-        &'a self, camera_id: CameraId, num_pipes: u8
-    ) -> Result<Camera<'a>, Error> {
-        Camera::new(self, camera_id as u8, num_pipes)
+    pub fn camera<'a>(&'a self, camera_id: CameraId) -> Result<Camera<'a>, Error> {
+        Camera::new(self, camera_id)
     }
 
     pub fn venc_channel<'a>(

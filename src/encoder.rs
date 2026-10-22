@@ -116,14 +116,10 @@ impl CameraEncoder {
         camera_id: CameraId,
         config: &VencConfig,
     ) -> Result<Self, Error> {
-        let pipe_id = 0;
         let camera_channel_id = 0;
 
-        let cam = mpi.camera(camera_id, 1)?.into_owned();
-
-        let pipe = cam.get_pipe(pipe_id)
-            .ok_or(Error::InvalidPipeId { id: pipe_id })?;
-        let camera_channel = pipe.create_channel(
+        let cam = mpi.camera(camera_id)?.into_owned();
+        let camera_channel = cam.pipe().create_channel(
             camera_channel_id, config.width, config.height
         )?;
 

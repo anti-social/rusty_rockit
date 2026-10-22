@@ -71,9 +71,9 @@ fn main() {
     log::info!("Creating MPI context...");
     let rockit_sys = RockitMpi::init().expect("Rockit");
 
-    let cam = rockit_sys.camera(camera_id, 1).expect("Camera device");
+    let cam = rockit_sys.camera(camera_id).expect("Camera device");
 
-    let pipe = cam.get_pipe(0).expect("Rockit pipe");
+    let pipe = cam.pipe();
     let camera_channel = pipe.create_channel(0, width, height).expect("Rockit channel");
 
     let enc_channel = rockit_sys.venc_channel(

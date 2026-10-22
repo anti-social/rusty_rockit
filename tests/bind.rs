@@ -42,8 +42,8 @@ fn camera_encoder() {
 #[test]
 fn vi_venc_bind() {
     let mpi = setup();
-    let cam = mpi.camera(CameraId::Zero, 1).unwrap();
-    let pipe = cam.get_pipe(0).unwrap();
+    let cam = mpi.camera(CameraId::Zero).unwrap();
+    let pipe = cam.pipe();
     let vi_chn = pipe.create_channel(0, 64, 32).unwrap();
     let cfg = venc_config(PixelFormat::Nv12, 64, 32, hevc(30));
     let venc = mpi.venc_channel(&cfg).unwrap().start().unwrap();
@@ -56,8 +56,8 @@ fn vi_venc_bind() {
 #[test]
 fn vi_vpss_bind() {
     let mpi = setup();
-    let cam = mpi.camera(CameraId::Zero, 1).unwrap();
-    let pipe = cam.get_pipe(0).unwrap();
+    let cam = mpi.camera(CameraId::Zero).unwrap();
+    let pipe = cam.pipe();
     let vi_chn = pipe.create_channel(0, 64, 32).unwrap();
     let group_cfg = VpssGroupConfig {
         pixel_format: PixelFormat::Nv12,
@@ -107,8 +107,8 @@ fn mpp_chn(module: ffi::rkMOD_ID_E, dev: i32, chn: i32) -> String {
 #[test]
 fn vi_binds_to_vpss_group() {
     let mpi = setup();
-    let cam = mpi.camera(CameraId::Zero, 2).unwrap();
-    let pipe = cam.get_pipe(1).unwrap();
+    let cam = mpi.camera(CameraId::One).unwrap();
+    let pipe = cam.pipe();
     let vi_chn = pipe.create_channel(2, 64, 32).unwrap();
     let group_0 = mpi.vpss_group(&group_cfg(PixelFormat::Nv12)).unwrap().start().unwrap();
     let chn_0 = group_0.channel(&chn_cfg(PixelFormat::Nv12)).unwrap().enable().unwrap();
@@ -137,8 +137,8 @@ fn vi_binds_to_vpss_group() {
 #[test]
 fn owned_vi_binds_to_vpss_group() {
     let mpi = setup();
-    let cam = mpi.camera(CameraId::Zero, 1).unwrap().into_owned();
-    let vi_chn = cam.get_pipe(0).unwrap().create_channel(0, 64, 32).unwrap();
+    let cam = mpi.camera(CameraId::Zero).unwrap().into_owned();
+    let vi_chn = cam.pipe().create_channel(0, 64, 32).unwrap();
     let _group_0 = mpi.vpss_group(&group_cfg(PixelFormat::Nv12)).unwrap();
     let group = mpi.vpss_group(&group_cfg(PixelFormat::Nv12)).unwrap().into_owned();
     let group = group.start().unwrap();

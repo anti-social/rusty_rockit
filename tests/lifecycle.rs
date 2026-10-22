@@ -45,8 +45,8 @@ fn everything_released_on_drop() {
         let _venc = mpi.venc_channel(&cfg).unwrap().start().unwrap();
         let pool = mpi.pool(64 * 32 * 3 / 2).unwrap();
         let _buf = pool.get_buffer(64 * 32 * 3 / 2).unwrap();
-        let cam = mpi.camera(Default::default(), 1).unwrap();
-        let pipe = cam.get_pipe(0).unwrap();
+        let cam = mpi.camera(Default::default()).unwrap();
+        let pipe = cam.pipe();
         let _chn = pipe.create_channel(0, 64, 32).unwrap();
         assert_eq!(live(Live::VencChns), 1);
         assert_eq!(live(Live::Mb), 1);
