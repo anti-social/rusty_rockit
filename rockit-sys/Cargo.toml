@@ -2,13 +2,12 @@
 name = "rockit-sys"
 version = "0.1.0"
 edition = "2024"
+links = "rockit"
 
 [features]
 default = ["mpi", "aiq"]
-mpi = []
-aiq = []
+mpi = ["rockit-bindings/mpi"]
+aiq = ["rockit-bindings/aiq"]
 
 [dependencies]
-
-[build-dependencies]
-bindgen = "0.72.1"
+rockit-bindings = { path = "../rockit-bindings", default-features = false }

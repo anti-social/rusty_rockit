@@ -14,4 +14,10 @@ fn main() {
         // Pass link arg explicitly with the path to the lib
         println!("cargo:rustc-link-arg-examples={out_dir}/lib{stub_name}.a");
     }
+
+    // On non-ARM hosts rockit-sys links the fake librockit.so from rockit-stub.
+    // Add an rpath so examples and tests also run outside of `cargo run`/`cargo test`.
+    if let Ok(stub_dir) = std::env::var("DEP_ROCKIT_STUB_DIR") {
+        println!("cargo::rustc-link-arg=-Wl,-rpath,{stub_dir}");
+    }
 }

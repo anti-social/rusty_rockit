@@ -1,0 +1,12 @@
+[package]
+name = "rockit-stub"
+version = "0.1.0"
+edition = "2024"
+description = "Fake librockit.so implementing a limited subset of the Rockit MPI/AIQ API for non-ARM hosts"
+
+[lib]
+name = "rockit"
+crate-type = ["cdylib"]
+
+[dependencies]
+rockit-bindings = { path = "../rockit-bindings" }

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
+    "rockit-bindings",
+    "rockit-stub",
     "rockit-sys",
 ]
 
