@@ -65,20 +65,19 @@ variants return `Rc`-based handles without lifetimes, as used by `CameraEncoder`
 
 ## Building on x86_64
 
-On non-ARM hosts `rockit-sys` links against a fake `librockit.so` built from the
-`rockit-stub` crate instead of the vendored ARM libraries. The fake implements the
+On non-ARM targets `rockit-sys` statically links a fake Rockit library from the
+`rockit-stub` crate instead of the vendored ARM libraries, so crates depending on
+`rusty-rockit` build and run on a host without extra steps. The fake implements the
 subset of the Rockit MPI and rkaiq API used by this crate: memory buffers live on
 the heap, VI channels produce a test pattern, VPSS converts/scales frames and VENC
 emits fake (non-decodable) H.264/HEVC packets.
 
-Build the stub first, then everything else:
-
 ``` sh
-cargo build -p rockit-stub
 cargo build --examples
 cargo run --example test_simple_encoder -- -o /tmp/out.h264
+cargo test --workspace
 ```
 
-or `make host` / `make host-test`. Set `ROCKIT_STUB_LIB_DIR` to link a stub from
-another directory and `ROCKIT_STUB_VI_FPS` to change the fake camera frame rate
-(`0` disables pacing).
+or `make host` / `make host-test`. Set `ROCKIT_STUB_VI_FPS` to change the fake
+camera frame rate (`0` disables pacing). `cargo build -p rockit-stub` also produces
+a standalone `librockit.so` for use outside of Rust.

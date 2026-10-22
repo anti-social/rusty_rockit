@@ -1,13 +1,10 @@
-.PHONY: examples host-stub host host-test
+.PHONY: examples host host-test
 examples:
 	cross build --target armv7-unknown-linux-gnueabihf --release --examples
 
-# Build and test on a non-ARM host against the fake librockit.so
-host-stub:
-	cargo build -p rockit-stub
-
-host: host-stub
+# Build and test on a non-ARM host against the fake Rockit library
+host:
 	cargo build --examples
 
-host-test: host-stub
+host-test:
 	cargo test --workspace

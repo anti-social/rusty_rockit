@@ -1,4 +1,7 @@
-//! Fake `librockit.so` for non-ARM hosts.
+//! Fake Rockit library for non-ARM hosts.
+//!
+//! `rockit-sys` links it statically on non-ARM targets. It is also built as a
+//! standalone `librockit.so` (cdylib).
 //!
 //! Implements the subset of the Rockit MPI and rkaiq API used by `rusty-rockit` with
 //! functional fakes: memory buffers live on the heap, VI produces a synthetic test pattern,

@@ -11,3 +11,7 @@ aiq = ["rockit-bindings/aiq"]
 
 [dependencies]
 rockit-bindings = { path = "../rockit-bindings", default-features = false }
+
+# Fake Rockit library linked instead of the vendored ARM libraries
+[target.'cfg(not(target_arch = "arm"))'.dependencies]
+rockit-stub = { path = "../rockit-stub" }
