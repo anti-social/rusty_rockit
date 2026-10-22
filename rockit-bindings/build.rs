@@ -54,6 +54,9 @@ fn main() {
             .blocklist_item("FP_SUBNORMAL")
             .blocklist_item("FP_NORMAL")
             .opaque_type("__pthread_unwind_buf_t__bindgen_ty_1")
+            // Newer glibc names of the jmp_buf types, bindgen gets their alignment wrong on ARM
+            .opaque_type("__jmp_buf_tag")
+            .opaque_type("__cancel_jmp_buf_tag")
             .clang_arg(format!("-I{vendor}/rockit/include"))
             .clang_arg(format!("-I{vendor}/isp/include/rkaiq"))
             .clang_arg(format!("-I{vendor}/isp/include/rkaiq/algos"))
