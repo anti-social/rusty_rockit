@@ -1,0 +1,3 @@
+# Build context of the cross image: only the toolchain is needed
+*
+!toolchain/arm-rockchip830-linux-uclibcgnueabihf
