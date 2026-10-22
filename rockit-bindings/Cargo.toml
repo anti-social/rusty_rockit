@@ -3,6 +3,10 @@ name = "rockit-bindings"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+# Doc comments are copied from C headers by bindgen and aren't valid Rust
+doctest = false
+
 [features]
 default = ["mpi", "aiq"]
 mpi = []
