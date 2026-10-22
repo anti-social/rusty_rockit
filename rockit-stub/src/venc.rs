@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use crate::clip::{self, Clip};
 use crate::ffi;
 use crate::image::{self, Image};
 use crate::state::{
@@ -11,6 +12,16 @@ const MOD: ffi::rkMOD_ID_E = ffi::rkMOD_ID_E_RK_ID_VENC;
 const INPUT_QUEUE_DEPTH: usize = 4;
 const DEFAULT_GOP: u32 = 30;
 
+/// What `GetStream` returns, chosen when a channel is created.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum VencSource {
+    /// Fake, non-decodable access units derived from the input frames,
+    /// with an IDR every configured GOP.
+    Synthetic,
+    /// Frames of a pre-encoded clip, looped. Falls back to `Synthetic` without clips.
+    Clip,
+}
+
 pub(crate) struct VencChn {
     codec: ffi::rkCODEC_ID_E,
     width: u32,
@@ -20,6 +31,7 @@ pub(crate) struct VencChn {
     queue: VecDeque<Image>,
     seq: u32,
     outstanding: u32,
+    clip: Option<&'static Clip>,
 }
 
 fn gop(attr: &ffi::VENC_RC_ATTR_S) -> u32 {
@@ -86,6 +98,16 @@ pub unsafe extern "C" fn RK_MPI_VENC_CreateChn(
     if venc.u32PicWidth == 0 || venc.u32PicHeight == 0 {
         return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_ILLEGAL_PARAM);
     }
+    let clip = match state.venc_source {
+        VencSource::Synthetic => None,
+        VencSource::Clip => {
+            let codec = match venc.enType {
+                ffi::rkCODEC_ID_E_RK_VIDEO_ID_AVC => clip::Codec::H264,
+                _ => clip::Codec::Hevc,
+            };
+            clip::select(codec, venc.u32PicWidth, venc.u32PicHeight)
+        }
+    };
     state.venc_chns.insert(
         VeChn,
         VencChn {
@@ -97,6 +119,7 @@ pub unsafe extern "C" fn RK_MPI_VENC_CreateChn(
             queue: VecDeque::new(),
             seq: 0,
             outstanding: 0,
+            clip,
         },
     );
     RK_SUCCESS
@@ -252,7 +275,13 @@ pub unsafe extern "C" fn RK_MPI_VENC_GetStream(
     let seq = chn.seq;
     chn.seq += 1;
     chn.outstanding += 1;
-    let (data, idr) = encode(chn, &image, seq);
+    let (data, idr) = match chn.clip {
+        Some(clip) => {
+            let frame = &clip.frames[seq as usize % clip.frames.len()];
+            (frame.data.clone(), frame.idr)
+        }
+        None => encode(chn, &image, seq),
+    };
     let hevc = chn.codec == ffi::rkCODEC_ID_E_RK_VIDEO_ID_HEVC;
 
     let mb = state.alloc_block(None, data.len());

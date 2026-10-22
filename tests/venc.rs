@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use rusty_rockit::venc::StreamFrame;
+use rusty_rockit::venc::{Codec, StreamFrame};
 use rusty_rockit::{Error, PixelFormat, ffi};
 
 const W: u16 = 64;
@@ -172,4 +172,54 @@ fn explicit_channel_id() {
     // Automatically allocated ids skip the reserved one
     let ids: Vec<_> = (0..6).map(|_| mpi.venc_channel(&cfg).unwrap()).collect();
     assert!(ids.iter().all(|c| c.id() != 5));
+}
+
+/// Encodes `count` frames of a `width`x`height` channel in clip mode.
+fn clip_stream(codec: Codec, width: u16, height: u16, count: usize) -> Vec<Vec<u8>> {
+    let mpi = setup();
+    set_venc_source(VencSource::Clip);
+    let cfg = venc_config(PixelFormat::Nv12, width, height, codec);
+    let venc = mpi.venc_channel(&cfg).unwrap().start().unwrap();
+    let pool = mpi.pool(cfg.calc_frame_buffer_size()).unwrap();
+    let buf = pool.get_buffer(cfg.calc_frame_buffer_size()).unwrap();
+    let mut frame = buf.new_frame(PixelFormat::Nv12, width, height);
+    let mut stream_frame = StreamFrame::new();
+    (0..count)
+        .map(|_| {
+            venc.send_frame(&mut frame, TIMEOUT).unwrap();
+            let stream = venc.get_stream(&mut stream_frame, TIMEOUT).unwrap();
+            stream.data().unwrap().to_vec()
+        })
+        .collect()
+}
+
+#[test]
+fn replays_h264_clip() {
+    let clip = include_bytes!("../rockit-stub/clips/720p.h264");
+    // The configured GOP is ignored: the clip has an IDR every 30 frames
+    let packets = clip_stream(h264(3), 1280, 720, 61);
+    assert_eq!(nal_units(&packets[..60].concat()), nal_units(clip));
+    for (i, packet) in packets.iter().enumerate() {
+        let types = h264_nal_types(packet);
+        let expected: &[u8] = if i % 30 == 0 { &[7, 8, 5] } else { &[1] };
+        assert_eq!(types, expected, "packet {i}");
+    }
+    assert_eq!(packets[60], packets[0], "the clip loops");
+}
+
+#[test]
+fn replays_hevc_clip() {
+    let clip = include_bytes!("../rockit-stub/clips/1080p.hevc");
+    let packets = clip_stream(hevc(30), 1920, 1080, 31);
+    assert_eq!(nal_units(&packets[..30].concat()), nal_units(&clip[..]).split_at(33).0);
+    assert_eq!(hevc_nal_types(&packets[0]), [32, 33, 34, 20]);
+    assert_eq!(hevc_nal_types(&packets[1]), [1]);
+    assert_eq!(hevc_nal_types(&packets[30]), [32, 33, 34, 20]);
+}
+
+#[test]
+fn clip_for_other_sizes_is_closest_one() {
+    let clip = include_bytes!("../rockit-stub/clips/720p.h264");
+    let packets = clip_stream(h264(30), W, H, 2);
+    assert_eq!(nal_units(&packets.concat()), nal_units(clip)[..4]);
 }

@@ -23,6 +23,7 @@ macro_rules! try_rk {
 }
 
 pub mod aiq;
+mod clip;
 pub mod control;
 mod image;
 pub mod mb;

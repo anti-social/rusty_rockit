@@ -16,6 +16,13 @@ unsafe extern "C" {
     fn rockit_stub_clear_call_log();
     fn rockit_stub_live_count(kind: c_int) -> i32;
     fn rockit_stub_set_vi_fps(fps: u32);
+    fn rockit_stub_set_venc_source(source: c_int) -> i32;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum VencSource {
+    Synthetic = 0,
+    Clip = 1,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -41,6 +48,8 @@ pub fn lock() -> MutexGuard<'static, ()> {
     unsafe {
         rockit_stub_reset();
         rockit_stub_set_vi_fps(0);
+        // Deterministic packets following the configured GOP
+        rockit_stub_set_venc_source(VencSource::Synthetic as c_int);
     }
     guard
 }
@@ -92,6 +101,10 @@ pub fn call_index(log: &[String], prefix: &str) -> usize {
 pub fn fail_next(name: &str, code: i32) {
     let name = CString::new(name).unwrap();
     unsafe { rockit_stub_fail_next(name.as_ptr(), code) }
+}
+
+pub fn set_venc_source(source: VencSource) {
+    assert_eq!(unsafe { rockit_stub_set_venc_source(source as c_int) }, 0);
 }
 
 pub fn set_vi_fps(fps: u32) {

@@ -50,6 +50,7 @@ pub(crate) struct State {
     pub initialized: bool,
     pub epoch: Instant,
     pub vi_fps: u32,
+    pub venc_source: venc::VencSource,
     pub blocks: HashMap<usize, Box<Block>>,
     pub pools: HashMap<ffi::MB_POOL, Pool>,
     pub next_pool_id: ffi::MB_POOL,
@@ -67,6 +68,7 @@ impl State {
             initialized: false,
             epoch: Instant::now(),
             vi_fps: crate::control::default_vi_fps(),
+            venc_source: crate::control::default_venc_source(),
             blocks: HashMap::new(),
             pools: HashMap::new(),
             next_pool_id: 0,
@@ -83,10 +85,12 @@ impl State {
     pub fn exit(&mut self) {
         let blocks = std::mem::take(&mut self.blocks);
         let vi_fps = self.vi_fps;
+        let venc_source = self.venc_source;
         let aiq_ctxs = std::mem::take(&mut self.aiq_ctxs);
         *self = Self::new();
         self.blocks = blocks;
         self.vi_fps = vi_fps;
+        self.venc_source = venc_source;
         self.aiq_ctxs = aiq_ctxs;
         for block in self.blocks.values_mut() {
             block.pool = None;

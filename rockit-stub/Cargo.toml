@@ -10,5 +10,10 @@ name = "rockit"
 # cdylib: a standalone librockit.so for use outside of Rust
 crate-type = ["rlib", "cdylib"]
 
+[features]
+default = ["clips"]
+# Embed pre-encoded H.264/HEVC clips (720p, 1080p) that VENC replays, see clips/
+clips = []
+
 [dependencies]
 rockit-bindings = { path = "../rockit-bindings" }

@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::ffi::{CStr, c_char, c_int};
 
 use crate::state::{COND, DEFAULT_VI_FPS, control, lock};
+use crate::venc::VencSource;
 
 pub const ROCKIT_STUB_LIVE_MB: c_int = 0;
 pub const ROCKIT_STUB_LIVE_POOLS: c_int = 1;
@@ -16,6 +17,9 @@ pub const ROCKIT_STUB_LIVE_BINDS: c_int = 4;
 pub const ROCKIT_STUB_LIVE_VI_CHNS: c_int = 5;
 pub const ROCKIT_STUB_LIVE_VI_DEVS: c_int = 6;
 pub const ROCKIT_STUB_LIVE_AIQ_CTXS: c_int = 7;
+
+pub const ROCKIT_STUB_VENC_SYNTHETIC: c_int = 0;
+pub const ROCKIT_STUB_VENC_CLIP: c_int = 1;
 
 /// Restores the initial state: drops every object, clears the call log and pending failures.
 #[unsafe(no_mangle)]
@@ -85,6 +89,28 @@ pub extern "C" fn rockit_stub_live_count(kind: c_int) -> i32 {
 pub extern "C" fn rockit_stub_set_vi_fps(fps: u32) {
     lock().vi_fps = fps;
     COND.notify_all();
+}
+
+/// Selects what VENC channels created afterwards return: `ROCKIT_STUB_VENC_CLIP`
+/// (pre-encoded clips, the default) or `ROCKIT_STUB_VENC_SYNTHETIC`. The default can
+/// be changed with the `ROCKIT_STUB_VENC_SOURCE` environment variable (`clip` or
+/// `synthetic`). Returns 0, or -1 for an unknown source.
+#[unsafe(no_mangle)]
+pub extern "C" fn rockit_stub_set_venc_source(source: c_int) -> i32 {
+    let source = match source {
+        ROCKIT_STUB_VENC_SYNTHETIC => VencSource::Synthetic,
+        ROCKIT_STUB_VENC_CLIP => VencSource::Clip,
+        _ => return -1,
+    };
+    lock().venc_source = source;
+    0
+}
+
+pub(crate) fn default_venc_source() -> VencSource {
+    match std::env::var("ROCKIT_STUB_VENC_SOURCE").as_deref() {
+        Ok("synthetic") => VencSource::Synthetic,
+        _ => VencSource::Clip,
+    }
 }
 
 pub(crate) fn default_vi_fps() -> u32 {
