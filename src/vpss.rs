@@ -10,7 +10,7 @@ use crate::{
     ffi, rk_check_err, rk_log_err
 };
 use crate::mb::{MbFrame, MbFrameInner, MbFrameOwned};
-use crate::vi::{ViChannel, ViChannelOwned};
+use crate::vi::{CameraInner, ViChannel, ViChannelInner, ViChannelOwned};
 
 #[derive(Debug, Clone, Copy)]
 pub struct VpssGroupConfig {
@@ -121,6 +121,22 @@ impl VpssGroupInner {
         Ok(())
     }
 
+    /// VI feeds the whole group: as a bind destination VPSS is addressed by
+    /// `s32DevId` = group id, with `s32ChnId` = 0.
+    fn bind_vi(&self, vi_pipe_id: i32, vi_channel_id: i32) -> Result<ChannelBind, Error> {
+        let src_channel = ffi::rkMPP_CHN_S {
+            enModId: ffi::rkMOD_ID_E_RK_ID_VI,
+            s32DevId: vi_pipe_id,
+            s32ChnId: vi_channel_id,
+        };
+        let dst_channel = ffi::rkMPP_CHN_S {
+            enModId: ffi::rkMOD_ID_E_RK_ID_VPSS,
+            s32DevId: self.id,
+            s32ChnId: 0,
+        };
+        ChannelBind::new(src_channel, dst_channel)
+    }
+
     pub(crate) fn send_frame(
         &self, pipe_id: i32, frame: &mut MbFrameInner, timeout: Duration
     ) -> Result<(), Error> {
@@ -199,6 +215,17 @@ impl<'a> VpssGroup<'a, state::Started> {
     ) -> Result<(), Error> {
         self.inner.send_frame(pipe_id as i32, &mut frame.inner, timeout)
     }
+
+    pub fn bind_vi<'s, 'b>(
+        &'s self, vi_channel: &'b ViChannel
+    ) -> Result<VpssViBind<'s, 'b>, Error> {
+        self.inner.bind_vi(vi_channel.pipe_id(), vi_channel.id())
+            .map(|inner| VpssViBind {
+                _inner: inner,
+                _group: &self.inner,
+                _vi_channel: vi_channel,
+            })
+    }
 }
 
 pub struct VpssGroupOwned<S> {
@@ -241,6 +268,17 @@ impl VpssGroupOwned<state::Started> {
         &self, pipe_id: u8, frame: &mut MbFrameOwned, timeout: Duration
     ) -> Result<(), Error> {
         self.inner.send_frame(pipe_id as i32, &mut frame.inner, timeout)
+    }
+
+    pub fn bind_vi(&self, vi_channel: &ViChannelOwned) -> Result<VpssViBindOwned, Error> {
+        self.inner.bind_vi(vi_channel.pipe_id(), vi_channel.id())
+            .map(|inner| VpssViBindOwned {
+                _inner: inner,
+                _group: Rc::clone(&self.inner),
+                _vi_channel: Rc::clone(&vi_channel.inner),
+                _camera: Rc::clone(&vi_channel.camera),
+                _mpi: self._mpi.clone(),
+            })
     }
 }
 
@@ -348,20 +386,6 @@ impl VpssChannelInner {
         Ok(())
     }
 
-    pub fn bind_vi(&self, pipe_id: i32, channel_id: i32) -> Result<ChannelBind, Error> {
-        let src_channel = ffi::rkMPP_CHN_S {
-            enModId: ffi::rkMOD_ID_E_RK_ID_VI,
-            s32DevId: pipe_id,
-            s32ChnId: channel_id,
-        };
-        let dst_channel = ffi::rkMPP_CHN_S {
-            enModId: ffi::rkMOD_ID_E_RK_ID_VPSS,
-            s32DevId: 0,
-            s32ChnId: self.id,
-        };
-        ChannelBind::new(src_channel, dst_channel)
-    }
-    
     fn get_frame(&self, timeout: Duration) -> Result<VpssFrameInner, Error> {
         log::trace!(
             "Getting VPSS channel frame [group = {}, channel = {}]",
@@ -395,6 +419,10 @@ impl<'a, S> VpssChannel<'a, S> {
     pub fn id(&self) -> i32 {
         self.inner.id
     }
+
+    pub fn group_id(&self) -> i32 {
+        self.inner.group_id
+    }
 }
 
 impl<'a> VpssChannel<'a, channel_state::Disabled> {
@@ -410,17 +438,6 @@ impl<'a> VpssChannel<'a, channel_state::Disabled> {
 }
 
 impl<'a> VpssChannel<'a, channel_state::Enabled> {
-    pub fn bind_vi<'b>(
-        &'a self, vi_channel: &'b ViChannel
-    ) -> Result<VpssViChannelBind<'a, 'b>, Error> {
-        self.inner.bind_vi(vi_channel.pipe_id(), vi_channel.id())
-            .map(|inner| VpssViChannelBind {
-                _inner: inner,
-                vpss_channel: self,
-                _vi_channel: vi_channel,
-            })
-    }
-    
     pub fn get_frame(&'a self, timeout: Duration) -> Result<VpssFrame<'a>, Error> {
         self.inner.get_frame(timeout)
             .map(|inner| VpssFrame {
@@ -452,6 +469,10 @@ pub struct VpssChannelOwned<S> {
 impl<S> VpssChannelOwned<S> {
     pub fn id(&self) -> i32 {
         self.inner.id
+    }
+
+    pub fn group_id(&self) -> i32 {
+        self.inner.group_id
     }
     
     pub fn enable(self) -> Result<VpssChannelOwned<channel_state::Enabled>, Error> {
@@ -487,28 +508,21 @@ impl VpssChannelOwned<channel_state::Enabled> {
     }
 }
 
-pub struct VpssViChannelBind<'a, 'b> {
+/// Binding of a VI channel to a VPSS group. Frames are taken from the group's channels.
+/// Unbinds on drop.
+pub struct VpssViBind<'a, 'b> {
     _inner: ChannelBind,
-    vpss_channel: &'a VpssChannel<'a, channel_state::Enabled>,
+    _group: &'a VpssGroupInner,
     _vi_channel: &'b ViChannel<'b>,
 }
 
-impl<'a, 'b> VpssViChannelBind<'a, 'b> {
-    pub fn get_frame(&self, timeout: Duration) -> Result<VpssFrame<'a>, Error> {
-        self.vpss_channel.get_frame(timeout)
-    }
-}
-
-pub struct VpssViChannelBindOwned {
+pub struct VpssViBindOwned {
+    // Unbind before the group and the VI channel are dropped
     _inner: ChannelBind,
-    vpss_channel: Rc<VpssChannelOwned<channel_state::Enabled>>,
-    _vi_channel: Rc<ViChannelOwned>,
-}
-
-impl VpssViChannelBindOwned {
-    pub fn get_frame(&self, timeout: Duration) -> Result<VpssFrameOwned, Error> {
-        self.vpss_channel.get_frame(timeout)
-    }
+    _group: Rc<VpssGroupInner>,
+    _vi_channel: Rc<ViChannelInner>,
+    _camera: Rc<CameraInner>,
+    _mpi: RockitMpi,
 }
 
 struct VpssFrameInner {

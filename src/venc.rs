@@ -393,12 +393,13 @@ impl VencChannelInner {
         Ok(())
     }
 
+    /// `src_dev_id` is the VI pipe or the VPSS group, `src_channel_id` the channel in it.
     fn bind(
-        &self, module: ffi::rkMOD_ID_E, src_channel_id: i32, src_pipe_id: i32
+        &self, module: ffi::rkMOD_ID_E, src_dev_id: i32, src_channel_id: i32
     ) -> Result<ChannelBind, Error> {
         let src_channel = ffi::rkMPP_CHN_S {
             enModId: module,
-            s32DevId: src_pipe_id,
+            s32DevId: src_dev_id,
             s32ChnId: src_channel_id,
         };
         let dst_channel = ffi::rkMPP_CHN_S {
@@ -533,7 +534,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
 
 impl<'a> VencChannel<'a, state::Started> {
     pub fn bind_vi<'b>(&'a self, vi_channel: &'b ViChannel) -> Result<ViVencBind<'a, 'b>, Error> {
-        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.id(), vi_channel.pipe_id())
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.pipe_id(), vi_channel.id())
             .map(|inner| ViVencBind {
                 _inner: inner,
                 venc_channel: self,
@@ -544,7 +545,7 @@ impl<'a> VencChannel<'a, state::Started> {
     pub fn bind_vpss<'b>(
         &'a self, vpss_channel: &'b VpssChannel<'b, vpss::channel_state::Enabled>
     ) -> Result<VpssVencBind<'a, 'b>, Error> {
-        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VPSS, vpss_channel.id(), 0)
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VPSS, vpss_channel.group_id(), vpss_channel.id())
             .map(|inner| VpssVencBind {
                 _inner: inner,
                 venc_channel: self,
@@ -600,7 +601,7 @@ impl VencChannelOwned<state::Initialized> {
 
 impl VencChannelOwned<state::Started> {
     pub fn bind_vi(&self, vi_channel: &ViChannelOwned) -> Result<ViVencBindOwned, Error> {
-        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.id(), vi_channel.pipe_id())
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vi_channel.pipe_id(), vi_channel.id())
             .map(|inner| ViVencBindOwned {
                 _inner: Rc::new(inner),
                 venc_channel: Rc::clone(&self.inner),
@@ -613,7 +614,7 @@ impl VencChannelOwned<state::Started> {
     pub fn bind_vpss(
         &self, vpss_channel: &VpssChannelOwned<vpss::channel_state::Enabled>
     ) -> Result<VpssVencBindOwned, Error> {
-        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VPSS, vpss_channel.id(), 0)
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VPSS, vpss_channel.group_id(), vpss_channel.id())
             .map(|inner| VpssVencBindOwned {
                 _inner: Rc::new(inner),
                 venc_channel: Rc::clone(&self.inner),

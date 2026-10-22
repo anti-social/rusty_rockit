@@ -93,3 +93,21 @@ fn owned_channel_frames() {
     let frame = chn.get_frame(TIMEOUT).unwrap();
     assert_eq!((frame.width(), frame.height()), (32, 16));
 }
+
+#[test]
+fn channel_on_second_pipe() {
+    let mpi = setup();
+    let cam = mpi.camera(CameraId::Zero, 2).unwrap();
+    let pipe = cam.get_pipe(1).unwrap();
+    let chn = pipe.create_channel(0, 32, 16).unwrap();
+    clear_call_log();
+    let frame = chn.get_frame(TIMEOUT).unwrap();
+    assert_eq!((frame.width(), frame.height()), (32, 16));
+    drop(frame);
+    drop(chn);
+    let log = call_log();
+    call_index(&log, "RK_MPI_VI_GetChnFrame(1, 0");
+    call_index(&log, "RK_MPI_VI_ReleaseChnFrame(1, 0");
+    call_index(&log, "RK_MPI_VI_DisableChn(1, 0)");
+    assert_eq!(live(Live::ViChns), 0);
+}

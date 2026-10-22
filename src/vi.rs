@@ -188,10 +188,10 @@ pub(crate) struct ViChannelInner {
 
 impl Drop for ViChannelInner {
     fn drop(&mut self) {
-        log::debug!("Disabling VI channel [id = {}]", self.id);
+        log::debug!("Disabling VI channel [pipe = {}, id = {}]", self.pipe_id, self.id);
         unsafe {
             rk_log_err!(
-                ffi::RK_MPI_VI_DisableChn(0, self.id),
+                ffi::RK_MPI_VI_DisableChn(self.pipe_id, self.id),
                 "Error disabling rockit channel"
             );
         }
@@ -267,7 +267,7 @@ impl ViChannelInner {
             let mut frame = MaybeUninit::zeroed();
             rk_check_err!(
                 ffi::RK_MPI_VI_GetChnFrame(
-                    0, self.id, frame.as_mut_ptr(), timeout.as_millis() as i32
+                    self.pipe_id, self.id, frame.as_mut_ptr(), timeout.as_millis() as i32
                 )
             );
             frame.assume_init()
