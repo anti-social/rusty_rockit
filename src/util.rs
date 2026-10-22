@@ -53,3 +53,38 @@ fn gcd(x: u32, y: u32) -> u32 {
     }
     x
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn align2_rounds_up_to_even() {
+        assert_eq!(align2(0), 0);
+        assert_eq!(align2(1), 2);
+        assert_eq!(align2(1080), 1080);
+        assert_eq!(align2(1081), 1082);
+    }
+
+    #[test]
+    fn ratio_ceil() {
+        assert_eq!(RatioU32::new(3, 2).ceil(), 2);
+        assert_eq!(RatioU32::new(4, 2).ceil(), 2);
+        assert_eq!(RatioU32::new(0, 7).ceil(), 0);
+        assert_eq!(RatioU32::from(5).ceil(), 5);
+    }
+
+    #[test]
+    fn ratio_mul_reduces_before_multiplying() {
+        assert_eq!((RatioU32::new(3, 2) * 1920).ceil(), 2880);
+        assert_eq!((RatioU32::new(3, 2) * 3).ceil(), 5);
+        // Would overflow without reducing by gcd first
+        assert_eq!((RatioU32::new(3, 2) * 2_000_000_000).ceil(), 3_000_000_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Denominator cannot be zero")]
+    fn ratio_zero_denominator() {
+        RatioU32::new(1, 0);
+    }
+}

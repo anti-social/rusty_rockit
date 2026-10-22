@@ -454,6 +454,14 @@ impl<'a> VencChannel<'a, state::Initialized> {
     pub fn new(
         mpi: &'a RockitMpi, channel_id: i32, cfg: &VencConfig
     ) -> Result<VencChannel<'a, state::Initialized>, Error> {
+        let resource = mpi.venc_channels.acqure_specific(channel_id as usize)?;
+        Self::with_resource(mpi, resource, cfg)
+    }
+
+    pub(crate) fn with_resource(
+        mpi: &'a RockitMpi, resource: AcquiredResource, cfg: &VencConfig
+    ) -> Result<VencChannel<'a, state::Initialized>, Error> {
+        let channel_id = resource.id as i32;
         let width = cfg.width as u32;
         let height = cfg.height as u32;
         unsafe {
@@ -498,7 +506,7 @@ impl<'a> VencChannel<'a, state::Initialized> {
             inner: VencChannelInner {
                 id: channel_id,
                 state: AtomicU8::new(state::Initialized::VALUE),
-                _resource: mpi.venc_channels.acqure()?,
+                _resource: resource,
             },
             _mpi: mpi,
             _marker: PhantomData,
@@ -536,7 +544,7 @@ impl<'a> VencChannel<'a, state::Started> {
     pub fn bind_vpss<'b>(
         &'a self, vpss_channel: &'b VpssChannel<'b, vpss::channel_state::Enabled>
     ) -> Result<VpssVencBind<'a, 'b>, Error> {
-        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VI, vpss_channel.id(), 0)
+        self.inner.bind(ffi::rkMOD_ID_E_RK_ID_VPSS, vpss_channel.id(), 0)
             .map(|inner| VpssVencBind {
                 _inner: inner,
                 venc_channel: self,
@@ -796,5 +804,83 @@ pub struct VencStream<'a, 'b> {
 impl<'a, 'b> VencStream<'a, 'b> {
     pub fn data(&self) -> Result<&[u8], Error> {
         self.inner.data()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn h264_cbr(gop: u16, framerate: u8, bitrate_kbps: u32) -> Codec {
+        Codec::H264 {
+            rate_control: H26xRateControl::Cbr { gop, framerate, bitrate_kbps },
+            profile: H264Profile::High,
+        }
+    }
+
+    fn config(pixel_format: PixelFormat, width: u16, height: u16, codec: Codec) -> VencConfig {
+        VencConfig { pixel_format, width, height, codec, buf_count: 2 }
+    }
+
+    #[test]
+    fn frame_buffer_size_accounts_for_format_and_alignment() {
+        let codec = h264_cbr(30, 30, 2048);
+        let cases = [
+            (PixelFormat::Nv12, 1920, 1080, 1920 * 1080 * 3 / 2),
+            (PixelFormat::Nv12, 1921, 1081, 1922 * 1082 * 3 / 2),
+            (PixelFormat::Nv12, 3, 3, 4 * 4 * 3 / 2),
+            (PixelFormat::Yuyv, 640, 480, 640 * 480 * 2),
+            (PixelFormat::Rgb24, 641, 480, 642 * 480 * 3),
+        ];
+        for (format, width, height, expected) in cases {
+            assert_eq!(
+                config(format, width, height, codec).calc_frame_buffer_size(),
+                expected,
+                "{format:?} {width}x{height}",
+            );
+        }
+    }
+
+    #[test]
+    fn stream_buffer_size_is_capped_by_frame_size() {
+        // 2 GOPs worth of bytes at the max bitrate
+        let cfg = config(PixelFormat::Nv12, 1920, 1080, h264_cbr(30, 30, 2048));
+        assert_eq!(cfg.calc_buffer_size(), 2048 * 1024 / 8 / 30 * 30 * 2);
+
+        let cfg = config(PixelFormat::Nv12, 320, 240, h264_cbr(60, 30, 20_000));
+        assert_eq!(cfg.calc_buffer_size(), cfg.calc_frame_buffer_size());
+    }
+
+    #[test]
+    fn codec_parameters() {
+        let codec = Codec::Hevc {
+            rate_control: H26xRateControl::Vbr {
+                gop: 50,
+                framerate: 25,
+                bitrate_kbps: 1000,
+                max_bitrate_kbps: 1500,
+                min_bitrate_kbps: 500,
+            },
+            profile: HevcProfile::Main,
+        };
+        assert_eq!(codec.gop(), 50);
+        assert_eq!(codec.framerate(), 25);
+        assert_eq!(codec.max_bitrate(), 1500 * 1024);
+        assert_eq!(codec.native_id(), ffi::rkCODEC_ID_E_RK_VIDEO_ID_HEVC);
+        assert_eq!(codec.native_rate_control_mode(), ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H265VBR);
+        assert_eq!(codec.native_profile(), ffi::rkH265E_PROFILE_E_H265E_PROFILE_MAIN);
+        let attrs = codec.native_rate_control_attrs();
+        let vbr = unsafe { attrs.stH265Vbr };
+        assert_eq!(vbr.u32Gop, 50);
+        assert_eq!(vbr.u32MaxBitRate, 1500);
+        assert_eq!(vbr.u32MinBitRate, 500);
+        assert_eq!(vbr.fr32DstFrameRateNum, 25);
+
+        let codec = h264_cbr(30, 60, 4000);
+        assert_eq!(codec.max_bitrate(), 4000 * 1024);
+        assert_eq!(codec.native_id(), ffi::rkCODEC_ID_E_RK_VIDEO_ID_AVC);
+        assert_eq!(codec.native_rate_control_mode(), ffi::rkVENC_RC_MODE_E_VENC_RC_MODE_H264CBR);
+        let cbr = unsafe { codec.native_rate_control_attrs().stH264Cbr };
+        assert_eq!((cbr.u32Gop, cbr.u32BitRate), (30, 4000));
     }
 }

@@ -45,7 +45,7 @@ impl RockitErr {
     pub const fn from_code(code: i32) -> Self {
         let id = (code & 0b0001_1111_1111_1111) as u32;
         let level = ((code >> 13) & 0b0111) as u32;
-        let module = ((code >> 3) & 0b1111_1111) as u32;
+        let module = ((code >> 16) & 0b1111_1111) as u32;
         Self { id, level, module }
     }
 }
@@ -207,8 +207,7 @@ impl RockitMpi {
     pub fn venc_channel<'a>(
         &'a self, cfg: &VencConfig
     ) -> Result<VencChannel<'a, venc::state::Initialized>, Error> {
-        let channel = self.venc_channels.acqure()?;
-        VencChannel::new(self, channel.id as i32, cfg)
+        VencChannel::with_resource(self, self.venc_channels.acqure()?, cfg)
     }
 
     pub fn pool<'a>(
@@ -220,8 +219,7 @@ impl RockitMpi {
     pub fn vpss_group<'a>(
         &'a self, cfg: &VpssGroupConfig
     ) -> Result<VpssGroup<'a, vpss::state::Initialized>, Error> {
-        let group = self.venc_channels.acqure()?;
-        VpssGroup::<vpss::state::Initialized>::new(self, group.id as i32, cfg)
+        VpssGroup::<vpss::state::Initialized>::new(self, cfg)
     }
 }
 
@@ -480,3 +478,74 @@ impl PixelFormat {
 //      */
 //     RK_ERR_BUTT          = 63,
 // }RK_ERR_CODE_E;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rockit_err_decodes_rk_def_err() {
+        let err = RockitErr::from_code(RK_ERR_VI_NOT_CONFIG);
+        assert_eq!(err.module, ffi::rkMOD_ID_E_RK_ID_VI);
+        assert_eq!(err.level, ffi::rkERR_LEVEL_E_RK_ERR_LEVEL_ERROR);
+        assert_eq!(err.id, ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_CONFIG);
+
+        let code = rk_def_err(
+            ffi::rkMOD_ID_E_RK_ID_AIISP as i32,
+            ffi::rkERR_LEVEL_E_RK_ERR_LEVEL_FATAL as i32,
+            ffi::rkEN_ERR_CODE_E_RK_ERR_BUTT as i32,
+        );
+        let err = RockitErr::from_code(code);
+        assert_eq!(err.module, ffi::rkMOD_ID_E_RK_ID_AIISP);
+        assert_eq!(err.level, ffi::rkERR_LEVEL_E_RK_ERR_LEVEL_FATAL);
+        assert_eq!(err.id, ffi::rkEN_ERR_CODE_E_RK_ERR_BUTT);
+    }
+
+    #[test]
+    fn resource_manager_acquires_lowest_free_id() {
+        let manager = ResourceManager::new("test".to_string(), 3);
+        let r0 = manager.acqure().unwrap();
+        let r1 = manager.acqure().unwrap();
+        assert_eq!((r0.id, r1.id), (0, 1));
+        drop(r0);
+        assert_eq!(manager.acqure().unwrap().id, 0);
+    }
+
+    #[test]
+    fn resource_manager_exhaustion() {
+        let manager = ResourceManager::new("test".to_string(), 2);
+        let _r0 = manager.acqure().unwrap();
+        let _r1 = manager.acqure().unwrap();
+        assert!(matches!(
+            manager.acqure(),
+            Err(Error::ResourceUnavailable { id: None, .. })
+        ));
+    }
+
+    #[test]
+    fn resource_manager_specific() {
+        let manager = ResourceManager::new("test".to_string(), 3);
+        let r2 = manager.acqure_specific(2).unwrap();
+        assert!(matches!(
+            manager.acqure_specific(2),
+            Err(Error::ResourceUnavailable { id: Some(2), .. })
+        ));
+        assert!(manager.acqure_specific(3).is_err());
+        assert_eq!(manager.acqure().unwrap().id, 0);
+        drop(r2);
+        assert_eq!(manager.acqure_specific(2).unwrap().id, 2);
+    }
+
+    #[test]
+    fn resource_manager_release_unknown_id() {
+        let manager = ResourceManager::new("test".to_string(), 1);
+        assert!(manager.release(0).is_err());
+    }
+
+    #[test]
+    fn pixel_format_bytes_per_pixel() {
+        assert_eq!((PixelFormat::Nv12.bytes_per_pixel() * 4).ceil(), 6);
+        assert_eq!((PixelFormat::Yuyv.bytes_per_pixel() * 4).ceil(), 8);
+        assert_eq!((PixelFormat::Rgb24.bytes_per_pixel() * 4).ceil(), 12);
+    }
+}

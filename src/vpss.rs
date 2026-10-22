@@ -79,8 +79,9 @@ impl Drop for VpssGroupInner {
 
 impl VpssGroupInner {
     fn new(
-        resource: AcquiredResource, id: i32, cfg: &VpssGroupConfig
+        resource: AcquiredResource, cfg: &VpssGroupConfig
     ) -> Result<Self, Error> {
+        let id = resource.id as i32;
         unsafe {
             let attrs = ffi::rkVPSS_GRP_ATTR_S {
                 u32MaxW: cfg.max_width as _,
@@ -164,9 +165,9 @@ impl<'a, S> VpssGroup<'a, S> {
 
 impl<'a> VpssGroup<'a, state::Initialized> {
     pub(crate) fn new(
-        mpi: &'a RockitMpi, id: i32, cfg: &VpssGroupConfig
+        mpi: &'a RockitMpi, cfg: &VpssGroupConfig
     ) -> Result<VpssGroup<'a, state::Initialized>, Error> {
-        VpssGroupInner::new(mpi.vpss_groups.acqure()?, id, cfg)
+        VpssGroupInner::new(mpi.vpss_groups.acqure()?, cfg)
             .map(|inner| VpssGroup {
                 inner: inner,
                 _mpi: mpi,
