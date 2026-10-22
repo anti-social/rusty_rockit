@@ -56,7 +56,7 @@ impl AiqContext<state::Initialized> {
                 }
             };
             let ctx_ptr = ffi::rk_aiq_uapi2_sysctl_init(
-                &aiq_static_info.sensor_info.sensor_name as *const u8,
+                aiq_static_info.sensor_info.sensor_name.as_ptr(),
                 iq_files.as_ptr(),
                 Some(isp_err_callback),
                 Some(isp_sof_callback),
