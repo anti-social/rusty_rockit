@@ -119,6 +119,45 @@ fn create_failure_releases_channel_id() {
 }
 
 #[test]
+fn enables_ref_buf_share() {
+    let mpi = setup();
+    let mut cfg = venc_config(PixelFormat::Nv12, W, H, hevc(30));
+    cfg.ref_buf_share = true;
+    clear_call_log();
+    let venc = mpi.venc_channel(&cfg).unwrap();
+    let id = venc.id();
+    let log = call_log();
+    assert!(log.contains(&format!("RK_MPI_VENC_SetChnRefBufShareAttr({id}, enable=1)")));
+    assert!(call_index(&log, "RK_MPI_VENC_CreateChn") < call_index(&log, "RK_MPI_VENC_SetChnRefBufShareAttr"));
+    drop(venc.start().unwrap());
+}
+
+#[test]
+fn ref_buf_share_is_disabled_by_default() {
+    let mpi = setup();
+    let cfg = venc_config(PixelFormat::Nv12, W, H, hevc(30));
+    clear_call_log();
+    let _venc = mpi.venc_channel(&cfg).unwrap();
+    assert!(!call_log().iter().any(|call| call.starts_with("RK_MPI_VENC_SetChnRefBufShareAttr")));
+}
+
+#[test]
+fn ref_buf_share_failure_destroys_channel() {
+    let mpi = setup();
+    let mut cfg = venc_config(PixelFormat::Nv12, W, H, hevc(30));
+    cfg.ref_buf_share = true;
+    let code = rk_err(ffi::rkMOD_ID_E_RK_ID_VENC, ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_SUPPORT);
+    fail_next("RK_MPI_VENC_SetChnRefBufShareAttr", code);
+    assert_rockit_err(
+        mpi.venc_channel(&cfg).map(|_| ()),
+        ffi::rkMOD_ID_E_RK_ID_VENC,
+        ffi::rkEN_ERR_CODE_E_RK_ERR_NOT_SUPPORT,
+    );
+    assert_eq!(live(Live::VencChns), 0);
+    assert_eq!(mpi.venc_channel(&cfg).unwrap().id(), 0);
+}
+
+#[test]
 fn drop_stops_before_destroying() {
     let mpi = setup();
     let cfg = venc_config(PixelFormat::Nv12, W, H, h264(30));

@@ -170,6 +170,24 @@ pub extern "C" fn RK_MPI_VENC_StopRecvFrame(VeChn: ffi::VENC_CHN) -> ffi::RK_S32
     RK_SUCCESS
 }
 
+/// Only validates arguments: memory usage of the fake encoder doesn't depend on it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn RK_MPI_VENC_SetChnRefBufShareAttr(
+    VeChn: ffi::VENC_CHN, pstVencChnRefBufShare: *const ffi::VENC_CHN_REF_BUF_SHARE_S,
+) -> ffi::RK_S32 {
+    let Some(attr) = (unsafe { pstVencChnRefBufShare.as_ref() }) else {
+        return rk_err(MOD, ffi::rkEN_ERR_CODE_E_RK_ERR_NULL_PTR);
+    };
+    if let Some(code) = enter(
+        "RK_MPI_VENC_SetChnRefBufShareAttr", format_args!("{VeChn}, enable={}", attr.bEnable)
+    ) {
+        return code;
+    }
+    let state = lock();
+    try_rk!(check_chn(&state, VeChn));
+    RK_SUCCESS
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn RK_MPI_VENC_SendFrame(
     VeChn: ffi::VENC_CHN, pstFrame: *const ffi::VIDEO_FRAME_INFO_S, s32MilliSec: ffi::RK_S32,

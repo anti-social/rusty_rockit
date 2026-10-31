@@ -150,7 +150,7 @@ pub fn hevc(gop: u16) -> Codec {
 }
 
 pub fn venc_config(pixel_format: PixelFormat, width: u16, height: u16, codec: Codec) -> VencConfig {
-    VencConfig { pixel_format, width, height, codec, buf_count: 2 }
+    VencConfig { pixel_format, width, height, codec, buf_count: 2, ref_buf_share: false }
 }
 
 /// Splits an Annex-B byte stream into NAL units (without start codes).

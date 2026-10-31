@@ -67,6 +67,7 @@ fn prepare_encoder_config(args: &Args) -> VencConfig {
         height: args.height,
         codec,
         buf_count: 2,
+        ref_buf_share: false,
     }
 }
 

@@ -83,6 +83,7 @@ fn main() {
             height,
             codec,
             buf_count: 2,
+            ref_buf_share: false,
         }
     ).expect("Encoder channel");
     let enc_channel = enc_channel.start().expect("Encoder start");

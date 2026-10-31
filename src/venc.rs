@@ -41,6 +41,9 @@ pub struct VencConfig {
     pub height: u16,
     pub codec: Codec,
     pub buf_count: u8,
+    /// Share a reference frame buffer with a reconstructed frame,
+    /// it saves about one frame of CMA memory
+    pub ref_buf_share: bool,
 }
 
 impl VencConfig {
@@ -393,6 +396,18 @@ impl VencChannelInner {
         Ok(())
     }
 
+    fn enable_ref_buf_share(&self) -> Result<(), Error> {
+        let ref_buf_share = ffi::rkVENC_CHN_REF_BUF_SHARE_S {
+            bEnable: true as u32,
+        };
+        unsafe {
+            rk_check_err!(
+                ffi::RK_MPI_VENC_SetChnRefBufShareAttr(self.id, &ref_buf_share as *const _)
+            );
+        }
+        Ok(())
+    }
+
     /// `src_dev_id` is the VI pipe or the VPSS group, `src_channel_id` the channel in it.
     fn bind(
         &self, module: ffi::rkMOD_ID_E, src_dev_id: i32, src_channel_id: i32
@@ -503,7 +518,8 @@ impl<'a> VencChannel<'a, state::Initialized> {
             );
         }
 
-        Ok(Self {
+        // The channel is destroyed on drop if the following configuration fails
+        let channel = Self {
             inner: VencChannelInner {
                 id: channel_id,
                 state: AtomicU8::new(state::Initialized::VALUE),
@@ -511,7 +527,11 @@ impl<'a> VencChannel<'a, state::Initialized> {
             },
             _mpi: mpi,
             _marker: PhantomData,
-        })
+        };
+        if cfg.ref_buf_share {
+            channel.inner.enable_ref_buf_share()?;
+        }
+        Ok(channel)
     }
 
     pub fn start(self) -> Result<VencChannel<'a, state::Started>, Error> {
@@ -820,7 +840,7 @@ mod tests {
     }
 
     fn config(pixel_format: PixelFormat, width: u16, height: u16, codec: Codec) -> VencConfig {
-        VencConfig { pixel_format, width, height, codec, buf_count: 2 }
+        VencConfig { pixel_format, width, height, codec, buf_count: 2, ref_buf_share: false }
     }
 
     #[test]

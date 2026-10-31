@@ -75,6 +75,7 @@ fn main() {
         height: args.height,
         codec,
         buf_count: 2,
+        ref_buf_share: false,
     };
     let enc_channel = rockit_sys.venc_channel(&venc_config)
         .expect("Encoder channel");
